@@ -1,9 +1,9 @@
 import pygame
 import sys
 import numpy as np
-from citygrid import CityGrid
-from traffic_generator import TrafficGenerator
-from benchmark import CplexSolver
+from environments.citygrid import CityGrid
+from environments.traffic_generator import TrafficGenerator
+from baselines.benchmark import CplexSolver
 
 
 # --- PYGAME CONFIGURATION ---

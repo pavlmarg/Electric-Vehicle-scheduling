@@ -4,13 +4,6 @@ class CityGrid:
     def __init__(self, size_km=5, num_stations=12, num_hubs=2, global_power_limit=150000, min_dist_km=0.5):
         """
         Initializes a Micro-City environment.
-        
-        Args:
-            size_km : City size 
-            num_stations : Total number of stations 
-            num_hubs : Total number of super-hubs
-            global_power_limit : Grid power threshold
-            min_dist_km : Min distance between stations 
         """
         self.size = size_km
         self.num_stations = num_stations
@@ -45,7 +38,6 @@ class CityGrid:
         print(f"--- Generating Micro-City Map ---")
         
         center = self.size / 2
-        # Fewer anchor points for hubs in a smaller map
         hub_centers = [
             [center, center],           
             [center * 0.5, center * 0.5]
@@ -54,14 +46,12 @@ class CityGrid:
         # --- SUPER HUBS ---
         for i in range(self.num_hubs):
             base_loc = hub_centers[i % len(hub_centers)]
-            # Reduced spread for smaller city
             location = self.get_valid_location(base_center=base_loc, spread=0.7)
             self.create_station(i, location, p_max=150000, n_fast=50, n_slow=100, s_type="SUPER-HUB")
 
         # --- NORMAL STATIONS ---
         for i in range(self.num_hubs, self.num_stations):
             location = self.get_valid_location(base_center=None, spread=None)
- 
             self.create_station(i, location, p_max=10000, n_fast=15, n_slow=30, s_type="Normal")
 
     def get_valid_location(self, base_center=None, spread=None):
@@ -90,7 +80,7 @@ class CityGrid:
         return candidate
 
     def create_station(self, s_id, location, p_max, n_fast, n_slow, s_type):
-        """Creates station with current_load tracker."""
+        """Creates station with current_load and queue trackers."""
         station = {
             'id': s_id,
             'type': s_type,
@@ -98,33 +88,44 @@ class CityGrid:
             'p_max': float(p_max),
             'current_load': 0.0,
             'chargers': {'fast': n_fast, 'slow': n_slow},
-            'occupied': {'fast': 0, 'slow': 0} 
+            'occupied': {'fast': 0, 'slow': 0},
+            'queue_length': 0  # <--- NEW: Explicitly track the queue in the backend!
         }
         self.stations.append(station)
         print(f"[{s_type}] ID {s_id}: Pos {location.round(1)} | Fast: {n_fast}, Slow: {n_slow}")
 
+    # --- NEW QUEUE MANAGEMENT METHODS ---
+    def get_queue(self, station_id):
+        """Returns the current number of cars waiting in line."""
+        return self.stations[station_id]['queue_length']
+
+    def add_to_queue(self, station_id):
+        """Adds a car to the station's waiting line."""
+        self.stations[station_id]['queue_length'] += 1
+
+    def remove_from_queue(self, station_id):
+        """Removes a car from the queue (e.g., when a charger opens up)."""
+        if self.stations[station_id]['queue_length'] > 0:
+            self.stations[station_id]['queue_length'] -= 1
+
+    # --- EXISTING HELPER METHODS ---
     def get_closest_stations(self, ev_location, n=3):
-        """Finds N closest stations via Manhattan distance."""
         distances = []
         for station in self.stations:
             diff = np.abs(ev_location - station['location'])
             dist = diff[0] + diff[1] 
             distances.append((station, dist))
-        
         distances.sort(key=lambda x: x[1])
         return distances[:n]
 
     def check_availability(self, station_id, charger_type):
-        """Checks if a plug is available."""
         st = self.stations[station_id]
         return st['occupied'][charger_type] < st['chargers'][charger_type]
     
     def get_all_station_ids(self):
-        """Helper for the PuLP solver to get all IDs."""
         return [st['id'] for st in self.stations]
         
     def get_station_capacity(self, station_id):
-        """Helper for the PuLP solver to enforce local limits."""
         for st in self.stations:
             if st['id'] == station_id:
                 return st['p_max']

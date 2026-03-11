@@ -15,7 +15,7 @@ class EV:
         self.target_soc = target_soc             
         
         # Slightly higher consumption for small-scale city realism
-        self.consumption_per_km = 3
+        self.consumption_per_km = 2
         
         # Timing (Minutes of the day)
         self.arrival_time = arrival_time
