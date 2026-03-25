@@ -1,36 +1,65 @@
 import numpy as np
 
 class EV:
-    def __init__(self, ev_id, location, battery_capacity, current_soc, target_soc, arrival_time, departure_time):
+    def __init__(self, ev_id, location, battery_capacity=50.0, current_soc=1.0):
         """
-        EV Agent class for a Micro-City
+        EV Agent class for a Fleet Management Micro-City
         """
         self.id = ev_id
         self.location = np.array(location, dtype=float)
         self.target_location = None
+        self.target_station_idx = None
         
         # Battery Specs
         self.battery_capacity = battery_capacity 
         self.current_soc = current_soc           
-        self.target_soc = target_soc             
         
-        # Slightly higher consumption for small-scale city realism
-        self.consumption_per_km = 2
+        # Ρεαλιστική κατανάλωση (0.2 kWh / km) 
+        self.consumption_per_km = 0.2 
         
-        # Timing (Minutes of the day)
-        self.arrival_time = arrival_time
-        self.departure_time = departure_time
+        # State Machine: 'driving', 'routing', 'moving_to_station', 'waiting', 'charging', 'stranded'
+        self.status = 'driving'
+        self.charger_type = None # Θυμάται αν κουμπώθηκε σε 'fast' ή 'slow'
         
         # Stats
-        self.status = 'driving'
         self.total_cost = 0.0
+        self.total_distance = 0.0
+        
+        self.times_charged = 0
+        self.total_waiting_time = 0
 
-    def drive(self, speed=0.5):
+    def drive_randomly(self, city_size, speed_km_per_min=0.5):
+        """
+        Το όχημα δουλεύει (π.χ. ως ταξί) κόβοντας βόλτες και καταναλώνοντας ενέργεια.
+        Αν η μπαταρία πέσει κάτω από 20%, ζητάει δρομολόγηση.
+        """
+        if self.status != 'driving': 
+            return
+
+        # Τυχαία κίνηση
+        angle = np.random.uniform(0, 2 * np.pi)
+        move_x = np.cos(angle) * speed_km_per_min
+        move_y = np.sin(angle) * speed_km_per_min
+        
+        self.location[0] = np.clip(self.location[0] + move_x, 0, city_size)
+        self.location[1] = np.clip(self.location[1] + move_y, 0, city_size)
+        
+        # Κατανάλωση
+        dist = np.sqrt(move_x**2 + move_y**2)
+        self.total_distance += dist
+        self._consume_energy(dist)
+
+        # Μπαίνει σε mode αναζήτησης σταθμού αν πέσει η μπαταρία
+        if 0 < self.current_soc <= 0.20:
+            self.status = 'routing'
+
+    def move_to_station(self, speed=0.5):
         """
         Moves EV towards target using Manhattan logic.
         Note: speed is km per minute (0.5 = 30km/h).
         """
-        if self.target_location is None: return False
+        if self.target_location is None or self.status != 'moving_to_station': 
+            return False
 
         # Calculate Manhattan Distance: |x1-x2| + |y1-y2|
         diff = self.target_location - self.location
@@ -40,7 +69,7 @@ class EV:
         if dist <= speed:
             self._consume_energy(dist)
             self.location = np.copy(self.target_location)
-            self.status = 'waiting'
+            self.status = 'waiting' # Έφτασε και μπαίνει στην ουρά
             return True
         
         # Move along X first, then Y
@@ -63,8 +92,8 @@ class EV:
         """
         Charges the EV. In a per-minute simulation, duration_min is 1.
         """
-        # Status must be set to charging by the station/manager
-        if self.status != 'charging': return 0.0
+        if self.status != 'charging': 
+            return 0.0
 
         added_energy = power_kw * (duration_min / 60.0)
         
@@ -76,6 +105,14 @@ class EV:
         self.current_soc += actual_energy / self.battery_capacity
         self.total_cost += actual_energy * price_per_kwh
         
+        # Αν η μπαταρία γέμισε (πάνω από 95%), το ταξί βγαίνει ξανά στους δρόμους!
+        if self.current_soc >= 0.95:
+            self.current_soc = 1.0
+            self.status = 'driving'
+            self.target_station_idx = None
+            self.target_location = None
+            self.times_charged += 1
+            
         return actual_energy
 
     def _consume_energy(self, dist_km):

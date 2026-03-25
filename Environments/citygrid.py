@@ -1,7 +1,7 @@
 import numpy as np
 
 class CityGrid:
-    def __init__(self, size_km=5, num_stations=12, num_hubs=2, global_power_limit=150000, min_dist_km=0.5):
+    def __init__(self, size_km=25, num_stations=12, num_hubs=2, global_power_limit=15000000, min_dist_km=0.5):
         """
         Initializes a Micro-City environment.
         """
@@ -11,14 +11,14 @@ class CityGrid:
         self.global_limit = global_power_limit
         self.min_dist = min_dist_km
         
-        # Power specs and pricing multipliers
+        # Power specs and pricing multipliers (in kW)
         self.charger_specs = {
             'fast': {'power': 50.0, 'price_multiplier': 1.5}, 
             'slow': {'power': 11.0, 'price_multiplier': 1.0} 
         }
         
-        self.peak_price = 0.30  
-        self.off_peak_price = 0.12 
+        self.peak_price = 0.80  
+        self.off_peak_price = 0.20 
         
         self.stations = []
         self.generate_stations()
@@ -47,12 +47,12 @@ class CityGrid:
         for i in range(self.num_hubs):
             base_loc = hub_centers[i % len(hub_centers)]
             location = self.get_valid_location(base_center=base_loc, spread=0.7)
-            self.create_station(i, location, p_max=150000, n_fast=50, n_slow=100, s_type="SUPER-HUB")
+            self.create_station(i, location, p_max=3600.0, n_fast=10, n_slow=30, s_type="SUPER-HUB")
 
         # --- NORMAL STATIONS ---
         for i in range(self.num_hubs, self.num_stations):
             location = self.get_valid_location(base_center=None, spread=None)
-            self.create_station(i, location, p_max=10000, n_fast=15, n_slow=30, s_type="Normal")
+            self.create_station(i, location, p_max=1080.0, n_fast=5, n_slow=15, s_type="Normal")
 
     def get_valid_location(self, base_center=None, spread=None):
         """Finds location respecting min_dist using Manhattan distance."""
@@ -89,24 +89,53 @@ class CityGrid:
             'current_load': 0.0,
             'chargers': {'fast': n_fast, 'slow': n_slow},
             'occupied': {'fast': 0, 'slow': 0},
-            'queue_length': 0  # <--- NEW: Explicitly track the queue in the backend!
+            'queue_length': 0  
         }
         self.stations.append(station)
-        print(f"[{s_type}] ID {s_id}: Pos {location.round(1)} | Fast: {n_fast}, Slow: {n_slow}")
+        print(f"[{s_type}] ID {s_id}: Pos {location.round(1)} | Fast: {n_fast}, Slow: {n_slow} | Max Power: {p_max}kW")
 
-    # --- NEW QUEUE MANAGEMENT METHODS ---
+    # --- QUEUE & CHARGER MANAGEMENT METHODS ---
     def get_queue(self, station_id):
-        """Returns the current number of cars waiting in line."""
         return self.stations[station_id]['queue_length']
 
     def add_to_queue(self, station_id):
-        """Adds a car to the station's waiting line."""
         self.stations[station_id]['queue_length'] += 1
 
     def remove_from_queue(self, station_id):
-        """Removes a car from the queue (e.g., when a charger opens up)."""
         if self.stations[station_id]['queue_length'] > 0:
             self.stations[station_id]['queue_length'] -= 1
+
+    def occupy_charger(self, station_id, preferred_type='fast'):
+        """
+        Προσπαθεί να καταλάβει φορτιστή. Ψάχνει πρώτα τον preferred_type,
+        αν δεν βρει πάει στον άλλο. Επιστρέφει τον τύπο που βρήκε (π.χ. 'fast') ή False.
+        """
+        st = self.stations[station_id]
+        
+        # Προσπάθεια για preferred (συνήθως 'fast')
+        if st['occupied'][preferred_type] < st['chargers'][preferred_type]:
+            st['occupied'][preferred_type] += 1
+            st['current_load'] += self.charger_specs[preferred_type]['power']
+            return preferred_type
+            
+        # Αν είναι γεμάτος ο fast, προσπάθεια για 'slow'
+        fallback = 'slow' if preferred_type == 'fast' else 'fast'
+        if st['occupied'][fallback] < st['chargers'][fallback]:
+            st['occupied'][fallback] += 1
+            st['current_load'] += self.charger_specs[fallback]['power']
+            return fallback
+            
+        return False # Όλα γεμάτα
+
+    def release_charger(self, station_id, charger_type):
+        """Ελευθερώνει την πρίζα και μειώνει το ρεύμα (load)."""
+        st = self.stations[station_id]
+        if st['occupied'][charger_type] > 0:
+            st['occupied'][charger_type] -= 1
+            st['current_load'] -= self.charger_specs[charger_type]['power']
+            # Ασφάλεια για floating point errors
+            if st['current_load'] < 0: 
+                st['current_load'] = 0.0
 
     # --- EXISTING HELPER METHODS ---
     def get_closest_stations(self, ev_location, n=3):
