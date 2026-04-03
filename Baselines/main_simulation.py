@@ -79,7 +79,7 @@ def run_headless_simulation():
     # --- 3. ΑΠΟΘΗΚΕΥΣΗ ΙΣΤΟΡΙΚΟΥ ---
     print("\n--- 3. SAVING HISTORY LOG ---")
     # Υποθέτουμε ένα κέρδος 1.5 Ευρώ για κάθε χιλιόμετρο που οδηγεί το ταξί
-    PROFIT_PER_KM = 0.70 
+    PROFIT_PER_KM = 1
     
     with open('history_baseline.csv', mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)

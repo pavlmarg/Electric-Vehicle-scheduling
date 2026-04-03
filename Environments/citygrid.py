@@ -47,12 +47,12 @@ class CityGrid:
         for i in range(self.num_hubs):
             base_loc = hub_centers[i % len(hub_centers)]
             location = self.get_valid_location(base_center=base_loc, spread=0.7)
-            self.create_station(i, location, p_max=3600.0, n_fast=10, n_slow=30, s_type="SUPER-HUB")
+            self.create_station(i, location, p_max=3600.0, n_fast=15, n_slow=50, s_type="SUPER-HUB")
 
         # --- NORMAL STATIONS ---
         for i in range(self.num_hubs, self.num_stations):
             location = self.get_valid_location(base_center=None, spread=None)
-            self.create_station(i, location, p_max=1080.0, n_fast=5, n_slow=15, s_type="Normal")
+            self.create_station(i, location, p_max=1080.0, n_fast=10, n_slow=20, s_type="Normal")
 
     def get_valid_location(self, base_center=None, spread=None):
         """Finds location respecting min_dist using Manhattan distance."""

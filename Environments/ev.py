@@ -14,10 +14,9 @@ class EV:
         self.battery_capacity = battery_capacity 
         self.current_soc = current_soc           
         
-        # Ρεαλιστική κατανάλωση (0.2 kWh / km) 
-        self.consumption_per_km = 0.2 
+        self.consumption_per_km = 0.5
         
-        # State Machine: 'driving', 'routing', 'moving_to_station', 'waiting', 'charging', 'stranded'
+        
         self.status = 'driving'
         self.charger_type = None # Θυμάται αν κουμπώθηκε σε 'fast' ή 'slow'
         
