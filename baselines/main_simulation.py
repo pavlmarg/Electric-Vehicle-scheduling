@@ -8,13 +8,14 @@ from environments.traffic_generator import TrafficGenerator
 from baselines.benchmark import GreedyHeuristicBaseline
 
 def run_headless_simulation():
-    NUM_VEHICLES = 400
+    NUM_VEHICLES = 750
+
     
-    print("--- 1. INITIALIZING REAL-WORLD MAP & FLEET ---")
+    print("--- 1. INITIALIZING CONTINUOUS SPACE MAP & FLEET ---")
     np.random.seed(50) 
     
-    # Αρχικοποίηση χάρτη Θεσσαλονίκης
-    city = CityMap(radius_meters=5500, num_stations=6)
+    # Αρχικοποίηση χάρτη στον συνεχή χώρο (20x20 km) με 25 σταθμούς
+    city = CityMap(width_km=20.0, height_km=20.0, num_stations=16, num_hubs=4)
     
     # Αρχικοποίηση στόλου
     generator = TrafficGenerator(city, num_vehicles=NUM_VEHICLES)
@@ -32,8 +33,8 @@ def run_headless_simulation():
     total_abandoned_customers = 0
     dead_taxis_set = set()  # Εδώ αποθηκεύουμε όσα ταξί ξεφορτίζουν
     
-    print("\n--- 2. STARTING 24-HOUR SIMULATION LOOP ---")
-    for minute in range(1440): 
+    print("\n--- 2. STARTING 48-HOUR SIMULATION LOOP ---")
+    for minute in range(2880): 
         
         # 1. ΠΑΡΑΓΩΓΗ ΖΗΤΗΣΗΣ & ΟΥΡΑ ΠΕΛΑΤΩΝ
         generator.generate_new_demands(minute)
@@ -57,9 +58,10 @@ def run_headless_simulation():
             if ev.state == 'IDLE':
                 # Αν η μπαταρία είναι κάτω από 25%, πάει για φόρτιση
                 if ev.current_soc <= 0.25:
-                    station_idx, station_node, dist, duration = baseline_solver.route_ev(ev)
+                    # Τέλος το station_node, πλέον παίρνουμε station_pos (x,y)
+                    station_idx, station_pos, dist, duration = baseline_solver.route_ev(ev)
                     
-                    ev.dispatch_to_station(station_node, station_idx, dist, duration, minute)
+                    ev.dispatch_to_station(station_pos, station_idx, dist, duration, minute)
                     city.add_to_queue(station_idx)
                     
             # Αν έφτασε στον σταθμό και περιμένει
@@ -122,7 +124,7 @@ def run_headless_simulation():
     final_avg_stars = (total_stars / total_customers_served) if total_customers_served > 0 else 0
     
     print("\n" + "="*60)
-    print("--- SIMULATION COMPLETE (REAL WORLD BASELINE) ---")
+    print("--- SIMULATION COMPLETE (CONTINUOUS SPACE BASELINE) ---")
     print(f"Συνολικός Στόλος: {NUM_VEHICLES} Οχήματα")
     print(f"Ολοκληρωμένες Φορτίσεις: {successful_charges}")
     print(f"Συνολική Ενέργεια Δικτύου: {total_energy_kwh:.2f} kWh")

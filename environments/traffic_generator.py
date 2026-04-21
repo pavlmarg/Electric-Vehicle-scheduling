@@ -11,36 +11,40 @@ class TrafficGenerator:
         self.fleet = []
         self.waitlist = [] 
         
-        # --- Γεωγραφικός Διαχωρισμός Κόμβων (Κέντρο vs Περίχωρα) ---
-        self.center_nodes = []
-        self.periphery_nodes = []
+        # Το κέντρο του χάρτη είναι ακριβώς στη μέση (10.0, 10.0 για 20x20 χάρτη)
+        self.center_x = self.city.width_km / 2.0
+        self.center_y = self.city.height_km / 2.0
         
-        center_lat, center_lon = self.city.center_point # (40.6264, 22.9484)
-        
-        for node_id, data in self.city.G.nodes(data=True):
-            # Προσεγγιστικός υπολογισμός απόστασης (1 μοίρα = ~111 km)
-            dist_km = np.sqrt((data['y'] - center_lat)**2 + (data['x'] - center_lon)**2) * 111.0
+        print(f"--- Traffic Generator Ready: Continuous Space {self.city.width_km}x{self.city.height_km} km ---")
+
+    def _get_random_point(self, region='center'):
+        """Βοηθητική συνάρτηση: Δίνει ένα τυχαίο (X, Y) στο κέντρο ή στα περίχωρα"""
+        while True:
+            x = np.random.uniform(0.0, self.city.width_km)
+            y = np.random.uniform(0.0, self.city.height_km)
             
-            if dist_km <= 2.5: # Ακτίνα 2.5km θεωρείται Κέντρο
-                self.center_nodes.append(node_id)
-            else:
-                self.periphery_nodes.append(node_id)
-                
-        print(f"--- Map Loaded: {len(self.center_nodes)} Center Nodes | {len(self.periphery_nodes)} Periphery Nodes ---")
+            # Υπολογίζουμε την ευθεία απόσταση από το κέντρο της πόλης
+            dist_from_center = np.sqrt((x - self.center_x)**2 + (y - self.center_y)**2)
+            
+            # Αν θεωρήσουμε "Κέντρο" μια ακτίνα 5 χιλιομέτρων
+            if region == 'center' and dist_from_center <= 5.0:
+                return (x, y)
+            elif region == 'periphery' and dist_from_center > 5.0:
+                return (x, y)
 
     def generate_initial_fleet(self):
         """
-        Δημιουργεί τα ταξί στους κόμβους του χάρτη στην αρχή της ημέρας.
+        Δημιουργεί τα ταξί σε τυχαίες θέσεις (X,Y) στην αρχή της ημέρας.
         """
         self.fleet = []
         print(f"--- Spawning Fleet of {self.num_vehicles} EV Taxis ---")
         
-        # Αρχικά μοιράζουμε τα ταξί σε όλη την πόλη τυχαία
-        available_nodes = self.city.nodes
-
         for i in range(self.num_vehicles):
-            start_node = np.random.choice(available_nodes)
-            taxi = EVTaxi(taxi_id=i, start_node=start_node)
+            # Τυχαία θέση οπουδήποτε στον χάρτη
+            x = np.random.uniform(0.0, self.city.width_km)
+            y = np.random.uniform(0.0, self.city.height_km)
+            
+            taxi = EVTaxi(taxi_id=i, start_pos=(x, y))
             taxi.current_soc = np.random.uniform(0.30, 1.0)
             self.fleet.append(taxi)
             
@@ -48,58 +52,80 @@ class TrafficGenerator:
 
     def generate_new_demands(self, current_time_mins):
         """
-        Δημιουργεί νέους πελάτες βάσει ώρας με Poisson κατανομή και γεωγραφικούς κανόνες.
+        Δημιουργεί νέους πελάτες βάσει ρεαλιστικής καμπύλης ζήτησης και κατευθυντικών ροών.
         """
         hour = (current_time_mins // 60) % 24
-        is_rush_hour = (7 <= hour <= 9) or (16 <= hour <= 19)
+
+        # 1. Κατανομή ζήτησης ανά ώρα (Πελάτες ανά λεπτό για το 24ωρο)
+        # Συνολικά βγάζει ~29.000 πελάτες τη μέρα (όσους ακριβώς έβγαζε και το παλιό σύστημα, αλλά σωστά κατανεμημένους)
+        demand_profile = [
+            4, 2, 1, 1, 2, 5,       # 00:00 - 05:59 (Νύχτα - Ξημερώματα)
+            15, 35, 45, 30, 22, 24, # 06:00 - 11:59 (Πρωινή αιχμή & Πρωί)
+            25, 25, 22, 28, 40, 45, # 12:00 - 17:59 (Μεσημέρι & Απογευματινή αιχμή)
+            35, 28, 20, 15, 10, 6   # 18:00 - 23:59 (Βράδυ)
+        ]
         
-        # Μέσος όρος πελατών ανά λεπτό
-        mean_demand = 30 if is_rush_hour else 18
-        
-        # Χρήση κατανομής Poisson για ρεαλιστική τυχαιότητα
+        mean_demand = demand_profile[hour]
         demand_count = np.random.poisson(mean_demand)
 
+        # 2. Προσδιορισμός τάσεων ροής με βάση την ώρα
+        # Πιθανότητες για: [Κέντρο->Κέντρο, Κέντρο->Περίχωρα, Περίχωρα->Κέντρο, Περίχωρα->Περίχωρα]
+        if 6 <= hour <= 11:
+            # Πρωί: Ο κόσμος πάει από τα Περίχωρα στο Κέντρο (για δουλειά)
+            trip_probs = [0.35, 0.10, 0.45, 0.10]
+        elif 15 <= hour <= 20:
+            # Απόγευμα/Βράδυ: Ο κόσμος επιστρέφει σπίτι (Κέντρο προς Περίχωρα)
+            trip_probs = [0.35, 0.45, 0.10, 0.10]
+        else:
+            # Μεσημέρι & Νύχτα: Πιο ισορροπημένη κίνηση, κυρίως μέσα στο κέντρο
+            trip_probs = [0.55, 0.15, 0.15, 0.15]
+
+        trip_types = ['CC', 'CP', 'PC', 'PP']
+
         for _ in range(demand_count):
-            # 1. Πού θα εμφανιστεί ο πελάτης; (70% πιθανότητα στο Κέντρο)
-            if np.random.rand() < 0.70 and self.center_nodes:
-                spawn_node = np.random.choice(self.center_nodes)
-                
-                # 2. Πού θέλει να πάει; (Από το Κέντρο: 60% μένει Κέντρο, 40% πάει Περίχωρα)
-                if np.random.rand() < 0.60:
-                    dest_node = np.random.choice(self.center_nodes)
-                    dist_km = np.random.uniform(1.5, 4.0) # Μικρή απόσταση
-                else:
-                    dest_node = np.random.choice(self.periphery_nodes)
-                    dist_km = np.random.uniform(3.0, 7.0) # Μεσαία απόσταση
-            else:
-                # Εμφάνιση στα Περίχωρα (30% πιθανότητα)
-                spawn_node = np.random.choice(self.periphery_nodes)
-                
-                # 2. Πού θέλει να πάει; (Από τα Περίχωρα: 80% θέλει να κατέβει Κέντρο!)
-                if np.random.rand() < 0.80:
-                    dest_node = np.random.choice(self.center_nodes)
-                    dist_km = np.random.uniform(3.0, 8.0) # Μεσαία/Μεγάλη απόσταση
-                else:
-                    dest_node = np.random.choice(self.periphery_nodes)
-                    dist_km = np.random.uniform(4.0, 11.0) # Μεγάλη απόσταση
+            # Διαλέγουμε τύπο διαδρομής βάσει των πιθανοτήτων της τρέχουσας ώρας
+            trip_type = np.random.choice(trip_types, p=trip_probs)
+
+            dist_km = 0.0
+            attempts = 0
+            
+            # 3. Εξασφάλιση πραγματικής απόστασης > 0.5km (μέχρι 10 προσπάθειες για να μη κολλήσει)
+            while dist_km < 0.5 and attempts < 10:
+                if trip_type == 'CC':
+                    spawn_pos = self._get_random_point('center')
+                    dest_pos = self._get_random_point('center')
+                elif trip_type == 'CP':
+                    spawn_pos = self._get_random_point('center')
+                    dest_pos = self._get_random_point('periphery')
+                elif trip_type == 'PC':
+                    spawn_pos = self._get_random_point('periphery')
+                    dest_pos = self._get_random_point('center')
+                else: # 'PP'
+                    spawn_pos = self._get_random_point('periphery')
+                    dest_pos = self._get_random_point('periphery')
+
+                dist_km = self.city.calculate_manhattan_dist(spawn_pos, dest_pos)
+                attempts += 1
+
+            if dist_km < 0.5:
+                dist_km = 0.5
 
             customer = {
                 'spawn_time': current_time_mins,
-                'spawn_node': spawn_node,
-                'destination_node': dest_node,
+                'spawn_pos': spawn_pos,
+                'destination_pos': dest_pos,
                 'distance_km': dist_km
             }
             self.waitlist.append(customer)
 
     def process_waitlist(self, current_time_mins):
         """
-        Ταιριάζει πελάτες από την ουρά με τα IDLE ταξί και υπολογίζει τα Αστέρια Αξιολόγησης.
+        Ταιριάζει πελάτες από την ουρά με τα IDLE ταξί.
         """
         hour = (current_time_mins // 60) % 24
         is_rush_hour = (7 <= hour <= 9) or (16 <= hour <= 19)
         avg_speed_kmh = 18.0 if is_rush_hour else 35.0
         speed_km_min = avg_speed_kmh / 60.0
-
         
         available_taxis = [t for t in self.fleet if t.state in ['IDLE', 'REBALANCING']]
         np.random.shuffle(available_taxis)
@@ -131,7 +157,7 @@ class TrafficGenerator:
             fare_eur = max(4.00, 1.80 + (customer['distance_km'] * 0.90))
             
             taxi.start_customer_trip(
-                destination_node=customer['destination_node'],
+                destination_pos=customer['destination_pos'],
                 distance_km=customer['distance_km'],
                 duration_mins=duration_mins,
                 fare_eur=fare_eur,

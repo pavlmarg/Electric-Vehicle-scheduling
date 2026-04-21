@@ -7,25 +7,36 @@ from environments.ev_gym_env import EVFleetEnv
 import csv
 
 def evaluate():
-    NUM_VEHICLES = 400
+    # ΔΙΟΡΘΩΣΗ 1: 750 Οχήματα, ακριβώς όπως εκπαιδεύτηκε το AI!
+    NUM_VEHICLES = 750
     
-    print("--- 1. INITIALIZING REAL-WORLD MAP & FLEET FOR AI ---")
-    np.random.seed(50) # ΚΛΕΙΔΩΜΑ ΓΙΑ ΣΥΓΚΡΙΣΗ ΜΕ ΤΟ BASELINE
+    print("--- 1. INITIALIZING CONTINUOUS SPACE MAP & FLEET FOR AI ---")
+    np.random.seed(50)
     
     env = EVFleetEnv(num_vehicles=NUM_VEHICLES)
-    model = PPO.load("ppo_fleet_model_v1")
+
+    # ΔΙΟΡΘΩΣΗ 2: Φορτώνουμε το σωστό μοντέλο που παράγει το νέο train_ppo.py
+    model_path = "ppo_fleet_model"
+    
+    if not os.path.exists(model_path + ".zip"):
+        print(f"ΣΦΑΛΜΑ: Το αρχείο {model_path}.zip δεν βρέθηκε! Σιγουρέψου ότι έτρεξες το train_ppo.py")
+        return
+        
+    print(f"Loading model: {model_path}")
+    model = PPO.load(model_path)
 
     np.random.seed(50)
     obs, _ = env.reset()
     
     terminated = False
     
-    print("\n--- 2. STARTING AI 24-HOUR SIMULATION LOOP ---")
+    print("\n--- 2. STARTING AI SIMULATION LOOP ---")
     
     last_printed_hour = -1
     dead_taxis_set = set()
     
     while not terminated:
+        # deterministic=True σημαίνει ότι το AI παίρνει την καλύτερη απόφαση, δεν "πειραματίζεται"
         action, _states = model.predict(obs, deterministic=True)
         obs, reward, terminated, truncated, info = env.step(action)
         
@@ -36,7 +47,8 @@ def evaluate():
                 print(f"💀 [Ώρα {env.current_minute//60:02d}:{env.current_minute%60:02d}] SOS: Το Ταξί {ev.id} έμεινε από μπαταρία!")
                 dead_taxis_set.add(ev.id)
         
-        if current_hour > last_printed_hour and current_hour < 24:
+        # ΔΙΟΡΘΩΣΗ 3: Το βάλαμε έως 48 ώρες, σε περίπτωση που θες να τεστάρεις αντοχή 2 ημερών!
+        if current_hour > last_printed_hour and current_hour < 48:
             with_cust = sum(1 for e in env.fleet if e.state == 'WITH_CUSTOMER')
             idle = sum(1 for e in env.fleet if e.state == 'IDLE')
             charging = sum(1 for e in env.fleet if e.state == 'CHARGING')
