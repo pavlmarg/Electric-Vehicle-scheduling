@@ -1,40 +1,39 @@
 import os
-import supersuit as ss
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.monitor import Monitor 
 from environments.ev_gym_env import EVFleetEnv
 
-def train_fleet_manager():
-    print("--- 1. INITIALIZING EV FLEET ENVIRONMENT ---")
-    env = EVFleetEnv(city_size_km=25, num_stations=12, num_vehicles=1000)
-    
+def main():
+    print("--- 1. Φόρτωση Περιβάλλοντος (City & Fleet) ---")
+    env = EVFleetEnv(num_vehicles=400)
 
-    env = Monitor(env) 
-    
-    vec_env = DummyVecEnv([lambda: env])
+    # Δημιουργούμε φάκελο για τα γραφήματα της εκπαίδευσης
+    log_dir = "./tensorboard_logs/"
+    os.makedirs(log_dir, exist_ok=True)
 
-    print("\n--- 2. BUILDING NEW PPO NEURAL NETWORK ---")
+    print("--- 2. Δημιουργία Νευρωνικού Δικτύου (PPO) ---")
+    # Το MlpPolicy σημαίνει ότι θα χρησιμοποιήσουμε ένα κλασικό Multi-Layer Perceptron
     model = PPO(
-        policy="MlpPolicy",           
-        env=vec_env,
-        learning_rate=0.0003,         
-        n_steps=2048,                 
-        batch_size=64,
-        gamma=0.99,                   
-        ent_coef=0.01,                
-        verbose=1,                    
-        tensorboard_log="./ppo_tensorboard/" 
+        "MlpPolicy", 
+        env, 
+        verbose=1, 
+        learning_rate=0.0003,
+        gamma=0.99,           
+        tensorboard_log=log_dir
     )
-    
-    TIMESTEPS = 2000000
-    
-    model.learn(total_timesteps=TIMESTEPS, progress_bar=True)
 
-    print("\n--- 4. SAVING THE TRAINED MODEL ---")
-    os.makedirs("models", exist_ok=True)
-    model.save("models/ppo_ev_fleet_model")
-    print("Το νέο μοντέλο εκπαιδεύτηκε και αποθηκεύτηκε επιτυχώς!")
+    print("--- 3. Έναρξη Εκπαίδευσης (Training) ---")
+    # ΑΥΞΗΣΑΜΕ ΤΑ ΒΗΜΑΤΑ ΣΕ 250.000! 
+    # Με τον σωστό χρονοδιακόπτη, αυτό αντιστοιχεί σε ~40-50 πλήρεις ημέρες.
+    timesteps = 250_000 
+    
+    # Αλλάζουμε το όνομα σε v2 για να βλέπουμε καθαρά τα νέα γραφήματα στο TensorBoard
+    model.learn(total_timesteps=timesteps, tb_log_name="PPO_FleetManager_v2")
+
+    print("--- 4. Αποθήκευση Μοντέλου ---")
+    model.save("ppo_fleet_model_v2")
+    print("Το AI εκπαιδεύτηκε και αποθηκεύτηκε επιτυχώς στο αρχείο 'ppo_fleet_model_v2.zip'!")
 
 if __name__ == "__main__":
-    train_fleet_manager()
+    main()

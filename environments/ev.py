@@ -1,4 +1,4 @@
-class EV:
+class EVTaxi:
     def __init__(self, taxi_id, start_node):
         """
         EV Agent class προσαρμοσμένη για πραγματικό χάρτη (OSMnx) και οικονομικά δεδομένα.

@@ -4,8 +4,11 @@ import networkx as nx
 import os
 import pickle
 
+ox.settings.timeout = 600         
+ox.settings.memory = 1073741824    
+
 class CityMap:
-    def __init__(self, center_point=(40.6264, 22.9484), radius_meters=5500, num_stations=8, num_hubs=2):
+    def __init__(self, center_point=(40.6264, 22.9484), radius_meters=5500, num_stations=6, num_hubs=2):
         """
         Initializes a real-world city environment using OSMnx for Thessaloniki.
         """
@@ -16,12 +19,16 @@ class CityMap:
         
         # Power specs and pricing multipliers (in kW)
         self.charger_specs = {
-            'fast': {'power': 50.0, 'price_multiplier': 1.5}, 
-            'slow': {'power': 11.0, 'price_multiplier': 1.0} 
+            'fast': {'power': 50.0,}, 
+            'slow': {'power': 11.0,} 
         }
         
-        self.peak_price = 0.80  
-        self.off_peak_price = 0.20 
+        
+        self.prices = {
+            'fast': {'peak': 0.65, 'off_peak': 0.50},
+            'slow': {'peak': 0.45, 'off_peak': 0.35}
+        }
+        
         
         # 1. Φόρτωση ή Λήψη του Χάρτη
         self.G = self._load_or_download_graph()
@@ -65,7 +72,7 @@ class CityMap:
                 s_id=i, 
                 location_node=node_id, 
                 p_max=1500.0, 
-                n_fast=8, 
+                n_fast=5, 
                 n_slow=5, 
                 s_type="SUPER-HUB"
             )
@@ -119,19 +126,22 @@ class CityMap:
             return 15.0 
 
     def get_electricity_price(self, time_minutes, charger_type='slow'):
-        if 420 <= time_minutes < 1380:
-            base_price = self.peak_price
+        """
+        Υπολογίζει την τιμή της kWh βάσει πραγματικών τιμολογίων (Ώρα + Τύπος).
+        """
+        
+        is_peak = 540 <= time_minutes < 1320
+        
+        if is_peak:
+            return self.prices[charger_type]['peak']
         else:
-            base_price = self.off_peak_price
-            
-        multiplier = self.charger_specs[charger_type]['price_multiplier']
-        return base_price * multiplier
+            return self.prices[charger_type]['off_peak']
 
     def create_station(self, s_id, location_node, p_max, n_fast, n_slow, s_type):
         station = {
             'id': s_id,
             'type': s_type,
-            'location': location_node, # Πλέον αποθηκεύει το Node ID
+            'location': location_node,
             'p_max': float(p_max),
             'current_load': 0.0,
             'chargers': {'fast': n_fast, 'slow': n_slow},
@@ -176,7 +186,6 @@ class CityMap:
             if st['current_load'] < 0: 
                 st['current_load'] = 0.0
 
-    # --- EXISTING HELPER METHODS UPDATED FOR MAP ---
     def get_closest_stations(self, ev_location_node, n=3):
         """Επιστρέφει τους n πιο κοντινούς σταθμούς με βάση την πραγματική απόσταση οδήγησης."""
         distances = []

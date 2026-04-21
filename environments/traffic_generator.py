@@ -1,95 +1,145 @@
 import numpy as np
-# Προσοχή: Σιγουρέψου ότι το αρχείο των οχημάτων λέγεται ev.py (ή ev_taxi.py) 
-# και έχει μέσα την κλάση EVTaxi που γράψαμε πριν!
 from environments.ev import EVTaxi 
 
 class TrafficGenerator:
-    def __init__(self, city_map, num_vehicles=250):
+    def __init__(self, city_map, num_vehicles=400):
         """
-        Διαχειρίζεται τον στόλο και την παραγωγή ζήτησης πελατών (AMoD Dispatching).
+        Διαχειρίζεται τον στόλο, τη ζήτηση και την ουρά αναμονής πελατών.
         """
         self.city = city_map
         self.num_vehicles = num_vehicles
         self.fleet = []
+        self.waitlist = [] 
+        
+        # --- Γεωγραφικός Διαχωρισμός Κόμβων (Κέντρο vs Περίχωρα) ---
+        self.center_nodes = []
+        self.periphery_nodes = []
+        
+        center_lat, center_lon = self.city.center_point # (40.6264, 22.9484)
+        
+        for node_id, data in self.city.G.nodes(data=True):
+            # Προσεγγιστικός υπολογισμός απόστασης (1 μοίρα = ~111 km)
+            dist_km = np.sqrt((data['y'] - center_lat)**2 + (data['x'] - center_lon)**2) * 111.0
+            
+            if dist_km <= 2.5: # Ακτίνα 2.5km θεωρείται Κέντρο
+                self.center_nodes.append(node_id)
+            else:
+                self.periphery_nodes.append(node_id)
+                
+        print(f"--- Map Loaded: {len(self.center_nodes)} Center Nodes | {len(self.periphery_nodes)} Periphery Nodes ---")
 
     def generate_initial_fleet(self):
         """
-        Δημιουργεί τα ταξί στους κόμβους (nodes) του χάρτη στην αρχή της ημέρας.
+        Δημιουργεί τα ταξί στους κόμβους του χάρτη στην αρχή της ημέρας.
         """
         self.fleet = []
         print(f"--- Spawning Fleet of {self.num_vehicles} EV Taxis ---")
         
-        # Λίστα με όλες τις διασταυρώσεις της Θεσσαλονίκης
+        # Αρχικά μοιράζουμε τα ταξί σε όλη την πόλη τυχαία
         available_nodes = self.city.nodes
 
         for i in range(self.num_vehicles):
-            # Τυχαίος κόμβος εκκίνησης
             start_node = np.random.choice(available_nodes)
-            
-            # Δημιουργία του Nissan Leaf Ταξί
             taxi = EVTaxi(taxi_id=i, start_node=start_node)
-            
-            # Τυχαία αρχική μπαταρία 30% - 100% για να μην πάνε όλα μαζί για φόρτιση στο 1ο λεπτό!
             taxi.current_soc = np.random.uniform(0.30, 1.0)
-            
             self.fleet.append(taxi)
             
         return self.fleet
 
-    def dispatch_rides(self, current_time_mins):
+    def generate_new_demands(self, current_time_mins):
         """
-        Προσομοιώνει τη ζήτηση πελατών και αναθέτει κούρσες στα ελεύθερα ταξί.
-        Καλείται ΚΑΘΕ ΛΕΠΤΟ από το περιβάλλον (ev_gym_env.py).
+        Δημιουργεί νέους πελάτες βάσει ώρας με Poisson κατανομή και γεωγραφικούς κανόνες.
         """
-        # 1. Υπολογισμός Κίνησης & Ζήτησης βάσει Ώρας (Rush hours: 07:00-09:00 και 16:00-19:00)
         hour = (current_time_mins // 60) % 24
         is_rush_hour = (7 <= hour <= 9) or (16 <= hour <= 19)
         
-        # Πόσοι πελάτες εμφανίζονται αυτό το λεπτό στην πόλη
-        base_demand = 8 
-        demand = int(base_demand * 2.5) if is_rush_hour else base_demand
+        # Μέσος όρος πελατών ανά λεπτό
+        mean_demand = 30 if is_rush_hour else 18
         
-        # Μέση ταχύτητα πόλης (km/h) -> Μετατροπή σε km/min
+        # Χρήση κατανομής Poisson για ρεαλιστική τυχαιότητα
+        demand_count = np.random.poisson(mean_demand)
+
+        for _ in range(demand_count):
+            # 1. Πού θα εμφανιστεί ο πελάτης; (70% πιθανότητα στο Κέντρο)
+            if np.random.rand() < 0.70 and self.center_nodes:
+                spawn_node = np.random.choice(self.center_nodes)
+                
+                # 2. Πού θέλει να πάει; (Από το Κέντρο: 60% μένει Κέντρο, 40% πάει Περίχωρα)
+                if np.random.rand() < 0.60:
+                    dest_node = np.random.choice(self.center_nodes)
+                    dist_km = np.random.uniform(1.5, 4.0) # Μικρή απόσταση
+                else:
+                    dest_node = np.random.choice(self.periphery_nodes)
+                    dist_km = np.random.uniform(3.0, 7.0) # Μεσαία απόσταση
+            else:
+                # Εμφάνιση στα Περίχωρα (30% πιθανότητα)
+                spawn_node = np.random.choice(self.periphery_nodes)
+                
+                # 2. Πού θέλει να πάει; (Από τα Περίχωρα: 80% θέλει να κατέβει Κέντρο!)
+                if np.random.rand() < 0.80:
+                    dest_node = np.random.choice(self.center_nodes)
+                    dist_km = np.random.uniform(3.0, 8.0) # Μεσαία/Μεγάλη απόσταση
+                else:
+                    dest_node = np.random.choice(self.periphery_nodes)
+                    dist_km = np.random.uniform(4.0, 11.0) # Μεγάλη απόσταση
+
+            customer = {
+                'spawn_time': current_time_mins,
+                'spawn_node': spawn_node,
+                'destination_node': dest_node,
+                'distance_km': dist_km
+            }
+            self.waitlist.append(customer)
+
+    def process_waitlist(self, current_time_mins):
+        """
+        Ταιριάζει πελάτες από την ουρά με τα IDLE ταξί και υπολογίζει τα Αστέρια Αξιολόγησης.
+        """
+        hour = (current_time_mins // 60) % 24
+        is_rush_hour = (7 <= hour <= 9) or (16 <= hour <= 19)
         avg_speed_kmh = 18.0 if is_rush_hour else 35.0
         speed_km_min = avg_speed_kmh / 60.0
 
-        # 2. Βρίσκουμε ποια ταξί είναι ελεύθερα ('IDLE')
-        idle_taxis = [taxi for taxi in self.fleet if taxi.state == 'IDLE']
         
-        # Αν δεν υπάρχουν ελεύθερα ταξί, οι πελάτες χάνονται
-        if not idle_taxis:
-            return
-            
-        # Ανακατεύουμε τα ελεύθερα ταξί για δίκαιη κατανομή
-        np.random.shuffle(idle_taxis)
+        available_taxis = [t for t in self.fleet if t.state in ['IDLE', 'REBALANCING']]
+        np.random.shuffle(available_taxis)
+        
+        ratings_this_minute = []
+        abandoned_count = 0
 
-        # 3. Ανάθεση Κουρσών
-        rides_assigned = 0
-        for taxi in idle_taxis:
-            if rides_assigned >= demand:
-                break # Εξυπηρετήθηκαν όλοι οι πελάτες αυτού του λεπτού
+        for taxi in available_taxis:
+            if not self.waitlist:
+                break
+            
+            customer = self.waitlist.pop(0) 
+            wait_time = current_time_mins - customer['spawn_time']
+            
+            if wait_time <= 3:
+                stars = 5
+            elif wait_time <= 7:
+                stars = 4
+            elif wait_time <= 11:
+                stars = 3
+            elif wait_time <= 15:
+                stars = 2
+            else:
+                stars = 1 
                 
-            # --- Δημιουργία Στατιστικής Κούρσας ---
-            # Επιλέγουμε τυχαίο προορισμό στον χάρτη
-            destination_node = np.random.choice(self.city.nodes)
+            ratings_this_minute.append(stars)
             
-            # ΣΗΜΑΝΤΙΚΟ: Δεν τρέχουμε Dijkstra για τον πελάτη γιατί θα γονατίσει το PC.
-            # Υποθέτουμε μια ρεαλιστική απόσταση 2 έως 12 km για τη Θεσσαλονίκη.
-            distance_km = np.random.uniform(2.0, 12.0)
+            duration_mins = int(customer['distance_km'] / speed_km_min) + 2 
+            fare_eur = max(4.00, 1.80 + (customer['distance_km'] * 0.90))
             
-            # Υπολογισμός χρόνου που θα δεσμευτεί το ταξί
-            duration_mins = int(distance_km / speed_km_min) + 2 # +2 λεπτά για επιβίβαση
-            
-            # Έσοδα κούρσας (1.80 Πτώση σημαίας + 0.90/km | Ελάχιστη 4.00 ευρώ)
-            fare_eur = max(4.00, 1.80 + (distance_km * 0.90))
-            
-            # Αναθέτουμε την κούρσα στο ταξί!
             taxi.start_customer_trip(
-                destination_node=destination_node,
-                distance_km=distance_km,
+                destination_node=customer['destination_node'],
+                distance_km=customer['distance_km'],
                 duration_mins=duration_mins,
                 fare_eur=fare_eur,
                 current_time=current_time_mins
             )
-            
-            rides_assigned += 1
+
+        original_count = len(self.waitlist)
+        self.waitlist = [c for c in self.waitlist if (current_time_mins - c['spawn_time']) <= 15]
+        abandoned_count = original_count - len(self.waitlist)
+        
+        return ratings_this_minute, abandoned_count

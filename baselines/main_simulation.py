@@ -8,13 +8,13 @@ from environments.traffic_generator import TrafficGenerator
 from baselines.benchmark import GreedyHeuristicBaseline
 
 def run_headless_simulation():
-    NUM_VEHICLES = 250  # Ο ρεαλιστικός στόλος που συζητήσαμε
+    NUM_VEHICLES = 400
     
     print("--- 1. INITIALIZING REAL-WORLD MAP & FLEET ---")
     np.random.seed(50) 
     
     # Αρχικοποίηση χάρτη Θεσσαλονίκης
-    city = CityMap(radius_meters=5500, num_stations=8)
+    city = CityMap(radius_meters=5500, num_stations=6)
     
     # Αρχικοποίηση στόλου
     generator = TrafficGenerator(city, num_vehicles=NUM_VEHICLES)
@@ -26,28 +26,40 @@ def run_headless_simulation():
     successful_charges = 0
     total_energy_kwh = 0.0
     
+    # Μεταβλητές Ποιότητας (QoS) & Νεκρών Ταξί
+    total_stars = 0
+    total_customers_served = 0
+    total_abandoned_customers = 0
+    dead_taxis_set = set()  # Εδώ αποθηκεύουμε όσα ταξί ξεφορτίζουν
+    
     print("\n--- 2. STARTING 24-HOUR SIMULATION LOOP ---")
     for minute in range(1440): 
         
-        # 1. ΠΑΡΑΓΩΓΗ ΖΗΤΗΣΗΣ (UBER LOGIC)
-        # Η γεννήτρια ρίχνει πελάτες στα Ελεύθερα ('IDLE') ταξί
-        generator.dispatch_rides(minute)
+        # 1. ΠΑΡΑΓΩΓΗ ΖΗΤΗΣΗΣ & ΟΥΡΑ ΠΕΛΑΤΩΝ
+        generator.generate_new_demands(minute)
+        ratings, abandoned = generator.process_waitlist(minute)
+        
+        # Αποθήκευση στατιστικών πελατών
+        total_stars += sum(ratings)
+        total_customers_served += len(ratings)
+        total_abandoned_customers += abandoned
         
         # 2. ΕΝΗΜΕΡΩΣΗ ΣΤΟΛΟΥ
         for ev in fleet:
-            # Έλεγχος αφίξεων (αν τελείωσε την κούρσα ή έφτασε στον σταθμό)
             ev.update_time(minute)
             
-            # Αν το ταξί είναι ελεύθερο (είτε δεν πήρε πελάτη, είτε μόλις τον άφησε)
+            # --- LIVE ΕΙΔΟΠΟΙΗΣΗ ΓΙΑ ΝΕΚΡΑ ΤΑΞΙ ---
+            if ev.state == 'STRANDED' and ev.id not in dead_taxis_set:
+                print(f" [Ώρα {minute//60:02d}:{minute%60:02d}] SOS: Το Ταξί {ev.id} έμεινε από μπαταρία στους δρόμους!")
+                dead_taxis_set.add(ev.id)
+            
+            # Αν το ταξί είναι ελεύθερο
             if ev.state == 'IDLE':
                 # Αν η μπαταρία είναι κάτω από 25%, πάει για φόρτιση
                 if ev.current_soc <= 0.25:
                     station_idx, station_node, dist, duration = baseline_solver.route_ev(ev)
                     
-                    # Δίνουμε εντολή μετάβασης στο όχημα
                     ev.dispatch_to_station(station_node, station_idx, dist, duration, minute)
-                    
-                    # Προσθέτουμε το όχημα στην ουρά του σταθμού
                     city.add_to_queue(station_idx)
                     
             # Αν έφτασε στον σταθμό και περιμένει
@@ -83,13 +95,13 @@ def run_headless_simulation():
             idle = sum(1 for e in fleet if e.state == 'IDLE')
             charging = sum(1 for e in fleet if e.state == 'CHARGING')
             waiting = sum(1 for e in fleet if e.state == 'WAITING_FOR_CHARGER')
-            stranded = sum(1 for e in fleet if e.state == 'STRANDED')
-            print(f"[Ώρα {minute//60:02d}:00] Με Πελάτη: {with_cust:3d} | Ελεύθερα: {idle:3d} | Φορτίζουν: {charging:2d} | Ουρά: {waiting:2d} | Νεκρά: {stranded:2d}")
+            
+            avg_stars = (total_stars / total_customers_served) if total_customers_served > 0 else 5.0
+            
+            print(f"[Ώρα {minute//60:02d}:00] Ταξί(Ελεύθ:{idle:3d}|Πελάτης:{with_cust:3d}|Φορτίζουν:{charging:2d}|ΟυράΠρίζας:{waiting:2d}) | Πελάτες σε Αναμονή: {len(generator.waitlist):3d} | Αστέρια App: {avg_stars:.1f} | Νεκρά: {len(dead_taxis_set)}")
 
     # --- 3. ΑΠΟΘΗΚΕΥΣΗ ΙΣΤΟΡΙΚΟΥ ---
     print("\n--- 3. SAVING HISTORY LOG ---")
-    
-    # Πάγιο κόστος ενοικίασης (Leasing) για το Nissan Leaf
     LEASING_COST_EUR = 20.0 
     
     with open('history_baseline_map.csv', mode='w', newline='', encoding='utf-8') as file:
@@ -97,7 +109,6 @@ def run_headless_simulation():
         writer.writerow(['EV_ID', 'Status', 'Distance_km', 'Gross_Profit_Eur', 'Charging_Cost_Eur', 'Net_Profit_Eur', 'Times_Charged', 'Wait_Time_mins', 'Final_SoC'])
         
         for ev in fleet:
-            # Το Καθαρό Κέρδος είναι τα έσοδα μείον ρεύμα, μείον το leasing!
             net_profit = ev.daily_revenue - ev.daily_charging_cost - LEASING_COST_EUR
             
             writer.writerow([
@@ -107,17 +118,21 @@ def run_headless_simulation():
             ])
 
     # --- 4. ΤΕΛΙΚΑ ΑΠΟΤΕΛΕΣΜΑΤΑ ---
-    final_stranded = sum(1 for e in fleet if e.state == 'STRANDED')
     total_net_profit = sum(e.daily_revenue - e.daily_charging_cost - LEASING_COST_EUR for e in fleet)
+    final_avg_stars = (total_stars / total_customers_served) if total_customers_served > 0 else 0
     
-    print("\n" + "="*55)
+    print("\n" + "="*60)
     print("--- SIMULATION COMPLETE (REAL WORLD BASELINE) ---")
     print(f"Συνολικός Στόλος: {NUM_VEHICLES} Οχήματα")
     print(f"Ολοκληρωμένες Φορτίσεις: {successful_charges}")
     print(f"Συνολική Ενέργεια Δικτύου: {total_energy_kwh:.2f} kWh")
-    print(f"Οχήματα που έμειναν από μπαταρία: {final_stranded}")
     print(f"ΣΥΝΟΛΙΚΟ ΚΑΘΑΡΟ ΚΕΡΔΟΣ ΕΤΑΙΡΕΙΑΣ: {total_net_profit:.2f} €")
-    print("="*55)
+    print("-" * 60)
+    print(f"Εξυπηρετήθηκαν: {total_customers_served} Πελάτες")
+    print(f"Εγκατέλειψαν (Χαμένα Έσοδα): {total_abandoned_customers} Πελάτες")
+    print(f"Μέση Βαθμολογία Στόλου (Αστέρια): {final_avg_stars:.2f} / 5.00")
+    print(f"Οχήματα που έμειναν από μπαταρία: {len(dead_taxis_set)}")
+    print("="*60)
 
 if __name__ == "__main__":
     run_headless_simulation()
