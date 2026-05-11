@@ -1,18 +1,63 @@
 import numpy as np
+import random
 
 class ClientManager:
-    def __init__(self, city_map):
+    def __init__(self, city_map, seed=None):
         self.city = city_map
         self.waitlist = []
         
-        # Το κέντρο του χάρτη 
+        # Αν περαστεί seed, το εφαρμόζουμε παγκόσμια 
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+        
         self.center_x = self.city.width_km / 2.0
         self.center_y = self.city.height_km / 2.0
+
+        # --- ΤΑ 10 ΠΡΟΦΙΛ ΖΗΤΗΣΗΣ ---
+        self.all_profiles = [
+            # 0. Normal Day (Κλασική μέρα με δύο νορμάλ αιχμές)
+            [4, 2, 1, 1, 2, 5, 15, 35, 45, 30, 22, 24, 25, 25, 22, 28, 40, 45, 35, 28, 20, 15, 10, 6],
+            
+            # 1. Commuter Heavy
+            [3, 2, 1, 1, 3, 10, 30, 55, 60, 40, 20, 15, 18, 15, 15, 20, 30, 35, 30, 25, 15, 10, 5, 3],
+            
+            # 2. Nightlife / Saturday
+            [15, 10, 5, 2, 1, 2, 10, 20, 25, 25, 25, 25, 30, 30, 30, 35, 45, 50, 60, 55, 45, 35, 25, 20],
+            
+            # 3. Lazy Sunday
+            [10, 8, 5, 2, 1, 1, 2, 5, 10, 15, 25, 35, 40, 45, 45, 40, 35, 30, 25, 20, 15, 10, 8, 5],
+            
+            # 4. Low Demand
+            [2, 1, 1, 1, 1, 3, 10, 25, 30, 20, 15, 15, 18, 18, 15, 18, 25, 30, 25, 20, 15, 10, 5, 3],
+            
+            # 5. High Stress
+            [5, 3, 2, 2, 5, 15, 25, 45, 60, 45, 35, 35, 35, 35, 35, 45, 60, 65, 55, 45, 30, 20, 15, 10],
+            
+            # 6. Flattened Curve
+            [10, 8, 5, 5, 8, 15, 25, 28, 30, 28, 25, 25, 25, 25, 25, 28, 30, 28, 25, 25, 20, 15, 12, 10],
+            
+            # 7. Bimodal Extreme
+            [2, 1, 1, 1, 5, 15, 30, 65, 70, 35, 15, 10, 10, 10, 10, 15, 35, 70, 65, 30, 15, 10, 5, 2],
+            
+            # 8. Late Night Event
+            [4, 2, 1, 1, 2, 5, 15, 30, 40, 25, 20, 20, 25, 25, 22, 25, 30, 35, 30, 25, 20, 15, 65, 40],
+            
+            # 9. Early Afternoon Spike
+            [4, 2, 1, 1, 2, 5, 15, 35, 45, 30, 22, 24, 25, 50, 65, 35, 30, 35, 30, 25, 20, 15, 10, 5]
+        ]
+        
+        # Καθορισμός Πιθανοτήτων: 28% για το Normal Day, 8% για τα υπόλοιπα 9
+        probabilities = [0.28] + [0.08] * 9
+        
+        # Επιλογή με βάση τις καθορισμένες πιθανότητες
+        chosen_index = np.random.choice(len(self.all_profiles), p=probabilities)
+        self.current_profile = self.all_profiles[chosen_index]
 
     def _get_random_point(self, region='center'):
         """Δίνει ένα τυχαίο (X, Y) στο κέντρο ή στα περίχωρα, ΚΟΥΜΠΩΜΕΝΟ ΣΤΟ ΠΛΕΓΜΑ"""
         while True:
-            # Χρησιμοποιούμε το _snap_to_grid της πόλης!
+            # Επαναφορά σε np.random.uniform
             x = self.city._snap_to_grid(np.random.uniform(0.0, self.city.width_km))
             y = self.city._snap_to_grid(np.random.uniform(0.0, self.city.height_km))
             
@@ -24,17 +69,12 @@ class ClientManager:
                 return (x, y)
 
     def generate_new_demands(self, current_time_mins):
-        """Δημιουργεί νέους πελάτες βάσει καμπύλης ζήτησης"""
+        """Δημιουργεί νέους πελάτες βάσει της επιλεγμένης καμπύλης ζήτησης"""
         hour = (current_time_mins // 60) % 24
 
-        demand_profile = [
-        4, 2, 1, 1, 2, 5,       # 00:00 - 05:00
-        15, 35, 45, 30, 22, 24, # 06:00 - 11:00 (Πρωινή Αιχμή στις 08:00)
-        25, 25, 22, 28, 40, 45, # 12:00 - 17:00 (Απογευματινή Αιχμή)
-        35, 28, 20, 15, 10, 6   # 18:00 - 23:00
-    ]
+        mean_demand = self.current_profile[hour]
         
-        mean_demand = demand_profile[hour]
+        # Επαναφορά σε np.random.poisson
         demand_count = np.random.poisson(mean_demand)
 
         if 6 <= hour <= 11:
@@ -47,6 +87,7 @@ class ClientManager:
         trip_types = ['CC', 'CP', 'PC', 'PP']
 
         for _ in range(demand_count):
+            # Επαναφορά σε np.random.choice
             trip_type = np.random.choice(trip_types, p=trip_probs)
             dist_km = 0.0
             attempts = 0
@@ -84,21 +125,17 @@ class ClientManager:
         avg_speed_kmh = 35.0
         speed_km_min = avg_speed_kmh / 60.0
         
-        # ΠΡΟΣΤΕΘΗΚΕ Ο ΚΑΝΟΝΑΣ: AND t.current_soc > 0.10
         available_taxis = [t for t in fleet if t.state in ['IDLE', 'REBALANCING'] and t.current_soc > 0.0]
         
         ratings_this_minute = []
         abandoned_count = 0
 
-        # Όσο έχουμε πελάτες και διαθέσιμα ταξί
         while self.waitlist and available_taxis:
-            # Βλέπουμε τον παλαιότερο πελάτη στην ουρά
             customer = self.waitlist[0]
             
             best_taxi = None
             min_dist = float('inf')
             
-            # Εύρεση του πιο κοντινού ταξί στον πελάτη
             for taxi in available_taxis:
                 dist = self.city.calculate_manhattan_dist(taxi.location, customer['spawn_pos'])
                 if dist < min_dist:
@@ -106,16 +143,12 @@ class ClientManager:
                     best_taxi = taxi
             
             if best_taxi:
-                # Αφαιρούμε τον πελάτη από την ουρά και το ταξί από τα διαθέσιμα
                 self.waitlist.pop(0)
                 available_taxis.remove(best_taxi)
                 
-                # --- ΥΠΟΛΟΓΙΣΜΟΙ ΤΑΞΙ (Χρόνος να φτάσει στον πελάτη) ---
                 pickup_dist_km = min_dist
                 pickup_duration_mins = int(pickup_dist_km / speed_km_min)
                 
-                # --- ΝΕΑ ΑΞΙΟΛΟΓΗΣΗ ΠΕΛΑΤΗ (Ρεαλιστική) ---
-                # Χρόνος εφαρμογής (συνήθως 0) + Χρόνος Οδήγησης Ταξί
                 dispatch_wait_time = current_time_mins - customer['spawn_time']
                 total_wait_time = dispatch_wait_time + pickup_duration_mins
                 
@@ -127,10 +160,8 @@ class ClientManager:
                     
                 ratings_this_minute.append(stars)
                 
-                # Ο πελάτης πληρώνει ΜΟΝΟ για τη δική του διαδρομή
                 fare_eur = max(4.00, 1.80 + (customer['distance_km'] * 0.90))
                 
-                # Το ταξί διανύει (και καίει ρεύμα) για: Απόσταση παραλαβής + Διαδρομή Πελάτη
                 total_trip_dist = pickup_dist_km + customer['distance_km']
                 total_duration_mins = pickup_duration_mins + int(customer['distance_km'] / speed_km_min) + 2 
                 
@@ -142,7 +173,6 @@ class ClientManager:
                     current_time=current_time_mins
                 )
 
-        # Εκκαθάριση εγκαταλελειμμένων: Όσοι περίμεναν > 15 λεπτά για να τους βρει σύστημα ταξί
         original_count = len(self.waitlist)
         self.waitlist = [c for c in self.waitlist if (current_time_mins - c['spawn_time']) <= 20]
         abandoned_count = original_count - len(self.waitlist)
