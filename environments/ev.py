@@ -21,11 +21,14 @@ class EVTaxi:
         self.total_km_driven = 0.0
         self.times_charged = 0
         self.total_waiting_time = 0
+        
+        # --- ΠΡΟΣΤΕΘΗΚΕ: Μετρητής πελατών ---
+        self.customers_served = 0 
 
     def start_customer_trip(self, destination_pos, distance_km, duration_mins, fare_eur, current_time):
-        if self.state != 'IDLE':
+        if self.state not in ['IDLE', 'REBALANCING']:
             return False
-            
+        
         self.state = 'WITH_CUSTOMER'
         self.target_pos = destination_pos
         self.busy_until = current_time + duration_mins
@@ -33,10 +36,13 @@ class EVTaxi:
         self.daily_revenue += fare_eur
         self.total_km_driven += distance_km
         self._consume_energy(distance_km)
+        
+        # --- ΠΡΟΣΤΕΘΗΚΕ: Αυξάνουμε τους πελάτες ---
+        self.customers_served += 1
         return True
 
     def dispatch_to_station(self, station_pos, station_id, distance_km, duration_mins, current_time):
-        if self.state != 'IDLE':
+        if self.state not in ['IDLE', 'REBALANCING']:
             return False
             
         self.state = 'MOVING_TO_STATION'
@@ -90,4 +96,4 @@ class EVTaxi:
     def __repr__(self):
         # Format the location to look neat if printed, keeping 2 decimal places
         loc_str = f"({self.location[0]:.1f}, {self.location[1]:.1f})" if isinstance(self.location, tuple) else "None"
-        return f"Taxi_{self.id} | Loc: {loc_str} | SoC: {self.current_soc:.0%} | State: {self.state} | Rev: {self.daily_revenue:.2f}€"
+        return f"Taxi_{self.id} | Loc: {loc_str} | SoC: {self.current_soc:.0%} | State: {self.state} | Rev: {self.daily_revenue:.2f}€ | Cust: {self.customers_served}"
