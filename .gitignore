@@ -3,3 +3,5 @@ cache/
 __pycache__/
 history_*.csv
 test/
+tensorboard_logs/
+ppo_fleet_*.zip

@@ -6,15 +6,16 @@ import csv
 from environments.citygrid import CityMap  
 from environments.traffic_generator import TrafficGenerator
 from baselines.benchmark import GreedyHeuristicBaseline
+import random
 
 def run_headless_simulation():
     NUM_VEHICLES = 750
 
-    
     print("--- 1. INITIALIZING CONTINUOUS SPACE MAP & FLEET ---")
     np.random.seed(50) 
+    random.seed(50)
     
-    # Αρχικοποίηση χάρτη στον συνεχή χώρο (20x20 km) με 25 σταθμούς
+    # Αρχικοποίηση χάρτη στον συνεχή χώρο (20x20 km) με 16 σταθμούς
     city = CityMap(width_km=20.0, height_km=20.0, num_stations=16, num_hubs=4)
     
     # Αρχικοποίηση στόλου
@@ -31,13 +32,16 @@ def run_headless_simulation():
     total_stars = 0
     total_customers_served = 0
     total_abandoned_customers = 0
-    dead_taxis_set = set()  # Εδώ αποθηκεύουμε όσα ταξί ξεφορτίζουν
+    dead_taxis_set = set()  
     
-    print("\n--- 2. STARTING 48-HOUR SIMULATION LOOP ---")
-    for minute in range(2880): 
+    print("\n--- 2. STARTING 48-HOUR SIMULATION LOOP (WITH REBALANCING) ---")
+    # Το διορθώσαμε σε 2880 για να τρέχει όντως 2 μέρες
+    for minute in range(1440): 
         
         # 1. ΠΑΡΑΓΩΓΗ ΖΗΤΗΣΗΣ & ΟΥΡΑ ΠΕΛΑΤΩΝ
         generator.generate_new_demands(minute)
+        
+        # Αφαιρέθηκε ο χρόνος αναμονής, γυρίσαμε στο κλασικό
         ratings, abandoned = generator.process_waitlist(minute)
         
         # Αποθήκευση στατιστικών πελατών
@@ -54,15 +58,27 @@ def run_headless_simulation():
                 print(f" [Ώρα {minute//60:02d}:{minute%60:02d}] SOS: Το Ταξί {ev.id} έμεινε από μπαταρία στους δρόμους!")
                 dead_taxis_set.add(ev.id)
             
-            # Αν το ταξί είναι ελεύθερο
+            # --- Αν το ταξί είναι ελεύθερο (IDLE) ---
             if ev.state == 'IDLE':
-                # Αν η μπαταρία είναι κάτω από 25%, πάει για φόρτιση
-                if ev.current_soc <= 0.25:
-                    # Τέλος το station_node, πλέον παίρνουμε station_pos (x,y)
-                    station_idx, station_pos, dist, duration = baseline_solver.route_ev(ev)
-                    
-                    ev.dispatch_to_station(station_pos, station_idx, dist, duration, minute)
-                    city.add_to_queue(station_idx)
+                # Ο Αλγόριθμος παίρνει πλέον ΟΛΕΣ τις αποφάσεις (Φόρτιση ή Rebalance)
+                action, target_pos, dist, duration = baseline_solver.route_ev(ev)
+                
+                if action is not None:
+                    if action == "REBALANCE":
+                        # Το ταξί πάει στο κέντρο
+                        ev.state = 'REBALANCING'
+                        ev.target_pos = target_pos
+                        ev.arrival_time = minute + duration
+                    else:
+                        # Το action είναι Αριθμός (Station ID), άρα πάει για φόρτιση
+                        ev.dispatch_to_station(target_pos, action, dist, duration, minute)
+                        city.add_to_queue(action)
+                        
+            # --- Αν το ταξί κάνει Αναδιάταξη (Επιστρέφει κέντρο) ---
+            elif ev.state == 'REBALANCING':
+                if minute >= getattr(ev, 'arrival_time', minute):
+                    ev.location = ev.target_pos
+                    ev.state = 'IDLE'
                     
             # Αν έφτασε στον σταθμό και περιμένει
             elif ev.state == 'WAITING_FOR_CHARGER':
@@ -97,18 +113,19 @@ def run_headless_simulation():
             idle = sum(1 for e in fleet if e.state == 'IDLE')
             charging = sum(1 for e in fleet if e.state == 'CHARGING')
             waiting = sum(1 for e in fleet if e.state == 'WAITING_FOR_CHARGER')
+            rebalancing = sum(1 for e in fleet if e.state == 'REBALANCING')
             
             avg_stars = (total_stars / total_customers_served) if total_customers_served > 0 else 5.0
             
-            print(f"[Ώρα {minute//60:02d}:00] Ταξί(Ελεύθ:{idle:3d}|Πελάτης:{with_cust:3d}|Φορτίζουν:{charging:2d}|ΟυράΠρίζας:{waiting:2d}) | Πελάτες σε Αναμονή: {len(generator.waitlist):3d} | Αστέρια App: {avg_stars:.1f} | Νεκρά: {len(dead_taxis_set)}")
+            print(f"[Ώρα {minute//60:02d}:00] Ταξί(Ελεύθ:{idle:3d}|Πελάτης:{with_cust:3d}|Επιστρέφουν:{rebalancing:3d}|Φορτίζουν:{charging:2d}|ΟυράΠρίζας:{waiting:2d}) | Αναμονή: {len(generator.waitlist):3d} | Αστέρια: {avg_stars:.1f} | Νεκρά: {len(dead_taxis_set)}")
 
     # --- 3. ΑΠΟΘΗΚΕΥΣΗ ΙΣΤΟΡΙΚΟΥ ---
     print("\n--- 3. SAVING HISTORY LOG ---")
-    LEASING_COST_EUR = 20.0 
+    LEASING_COST_EUR = 40.0 
     
-    with open('history_baseline_map.csv', mode='w', newline='', encoding='utf-8') as file:
+    with open('history_baseline_with_rebalance.csv', mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
-        writer.writerow(['EV_ID', 'Status', 'Distance_km', 'Gross_Profit_Eur', 'Charging_Cost_Eur', 'Net_Profit_Eur', 'Times_Charged', 'Wait_Time_mins', 'Final_SoC'])
+        writer.writerow(['EV_ID', 'Status', 'Distance_km', 'Gross_Profit_Eur', 'Charging_Cost_Eur', 'Net_Profit_Eur', 'Times_Charged', 'Wait_Time_mins', 'Final_SoC', 'Customers_Served'])
         
         for ev in fleet:
             net_profit = ev.daily_revenue - ev.daily_charging_cost - LEASING_COST_EUR
@@ -116,7 +133,7 @@ def run_headless_simulation():
             writer.writerow([
                 ev.id, ev.state, f"{ev.total_km_driven:.2f}", f"{ev.daily_revenue:.2f}", 
                 f"{ev.daily_charging_cost:.2f}", f"{net_profit:.2f}", ev.times_charged, 
-                ev.total_waiting_time, f"{ev.current_soc:.2f}"
+                ev.total_waiting_time, f"{ev.current_soc:.2f}", ev.customers_served
             ])
 
     # --- 4. ΤΕΛΙΚΑ ΑΠΟΤΕΛΕΣΜΑΤΑ ---
@@ -124,7 +141,7 @@ def run_headless_simulation():
     final_avg_stars = (total_stars / total_customers_served) if total_customers_served > 0 else 0
     
     print("\n" + "="*60)
-    print("--- SIMULATION COMPLETE (CONTINUOUS SPACE BASELINE) ---")
+    print("--- SIMULATION COMPLETE (WITH REBALANCING) ---")
     print(f"Συνολικός Στόλος: {NUM_VEHICLES} Οχήματα")
     print(f"Ολοκληρωμένες Φορτίσεις: {successful_charges}")
     print(f"Συνολική Ενέργεια Δικτύου: {total_energy_kwh:.2f} kWh")
