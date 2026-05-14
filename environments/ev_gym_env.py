@@ -32,7 +32,7 @@ class EVFleetEnv(gym.Env):
         # [47]   = waitlist pressure                  <- NEW
         self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(48,), dtype=np.float32)
 
-        self.total_stars = 0
+        self.total_wait_time = 0.0
         self.total_customers_served = 0
         self.total_abandoned = 0
         self.total_energy_kwh = 0.0
@@ -46,6 +46,9 @@ class EVFleetEnv(gym.Env):
         self.previous_stranded_count = 0
         self.idle_cooldowns = {}
         self._np_rng = None
+        
+        self.queues_over_time = []
+        self.avg_soc_over_time = []
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -62,11 +65,14 @@ class EVFleetEnv(gym.Env):
         self.generator = TrafficGenerator(self.city, num_vehicles=self.num_vehicles)
         self.fleet = self.generator.generate_initial_fleet()
 
-        self.total_stars = 0
+        self.total_wait_time = 0.0
         self.total_customers_served = 0
         self.total_abandoned = 0
         self.total_energy_kwh = 0.0
         self.safety_overrides = 0
+        
+        self.queues_over_time = []
+        self.avg_soc_over_time = []
 
         self.current_minute = 0
         self.taxis_needing_action = deque()
@@ -282,13 +288,12 @@ class EVFleetEnv(gym.Env):
 
         while self.current_minute < 1440:
             self.generator.generate_new_demands(self.current_minute)
-
-            ratings, abandoned = self.generator.process_waitlist(self.current_minute)
+            wait_times, abandoned = self.generator.process_waitlist(self.current_minute, self.fleet)
 
             total_abandoned_this_loop += abandoned
             self.total_abandoned += abandoned
-            self.total_stars += sum(ratings)
-            self.total_customers_served += len(ratings)
+            self.total_wait_time += sum(wait_times)
+            self.total_customers_served += len(wait_times)
 
             for ev in self.fleet:
                 ev.update_time(self.current_minute)
@@ -301,10 +306,7 @@ class EVFleetEnv(gym.Env):
                         self.idle_cooldowns[ev.id] = 0
 
                 # --------------------------------------------------------
-                # SAFETY OVERRIDE: If a taxi is idle and critically low,
-                # send it to the nearest uncrowded station automatically.
-                # This frees the RL agent to focus on STRATEGIC decisions
-                # (proactive charging, rebalancing) not emergency triage.
+                # SAFETY OVERRIDE
                 # --------------------------------------------------------
                 if ev.state == 'IDLE' and ev.current_soc <= 0.20:
                     best_station = self._find_best_emergency_station(ev)
@@ -315,13 +317,12 @@ class EVFleetEnv(gym.Env):
                         ev.dispatch_to_station(dest_pos, best_station, dist, travel_minutes, self.current_minute)
                         self.city.add_to_queue(best_station)
                         self.safety_overrides += 1
-                        # Remove from action queue if it was already there
                         if ev.id in self.taxis_needing_action_set:
                             self.taxis_needing_action_set.discard(ev.id)
                             self.taxis_needing_action = deque(
                                 t for t in self.taxis_needing_action if t.id != ev.id
                             )
-                        continue  # Skip normal idle logic below
+                        continue  
 
                 if ev.state == 'IDLE':
                     if self.idle_cooldowns.get(ev.id, 0) > 0:
@@ -347,6 +348,14 @@ class EVFleetEnv(gym.Env):
 
                     if ev.state == 'IDLE':
                         self.city.release_charger(station_to_release, ev.charger_type)
+
+            # --- ΝΕΟ: Καταγραφή Δεδομένων Time-Series (Λεπτό προς Λεπτό) ---
+            current_total_queue = sum(st['queue_length'] for st in self.city.stations)
+            current_avg_soc = sum(ev.current_soc for ev in self.fleet) / len(self.fleet)
+            
+            self.queues_over_time.append(current_total_queue)
+            self.avg_soc_over_time.append(current_avg_soc)
+            # -------------------------------------------------------------
 
             self.current_minute += 1
 

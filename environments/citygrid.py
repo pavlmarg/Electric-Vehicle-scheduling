@@ -27,7 +27,6 @@ class CityMap:
         return round(value / self.grid_step) * self.grid_step
 
     def _generate_stations(self):
-        print(f"--- Δημιουργία {self.num_stations} Σταθμών (Οικοδομικά Τετράγωνα των 50m) ---")
         
         random.seed(50)
         # Super-Hubs
@@ -97,7 +96,6 @@ class CityMap:
             'queue_length': 0  
         }
         self.stations.append(station)
-        print(f"[{s_type}] ID {s_id}: Θέση ({position_xy[0]:.2f}, {position_xy[1]:.2f}) | Fast: {n_fast}, Slow: {n_slow}")
 
     def try_reserve_charger(self, station_id, preferred_type='fast'):
         st = self.stations[station_id]
