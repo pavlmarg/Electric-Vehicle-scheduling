@@ -39,10 +39,10 @@ def main():
 
     print("--- 3. Έναρξη Εκπαίδευσης (500.000 βήματα) ---")
     # Χωρίς Φύλακα, το τρέξιμο θα είναι συνεχόμενο και πολύ πιο γρήγορο
-    model.learn(total_timesteps=2000000, tb_log_name="PPO_EV")
+    model.learn(total_timesteps=3000000, tb_log_name="PPO_EV")
 
     print("--- 4. Τελική Αποθήκευση ---")
-    model.save("ppo_fleet_model_v5") 
+    model.save("ppo_model") 
     print("Η εκπαίδευση ολοκληρώθηκε! Το μοντέλο αποθηκεύτηκε ως 'ppo_fleet_model.zip'")
 
 if __name__ == "__main__":

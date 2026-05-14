@@ -16,48 +16,24 @@ class ClientManager:
 
         # --- ΤΑ 10 ΠΡΟΦΙΛ ΖΗΤΗΣΗΣ ---
         self.all_profiles = [
-            # 0. Normal Day (Κλασική μέρα με δύο νορμάλ αιχμές)
             [4, 2, 1, 1, 2, 5, 15, 35, 45, 30, 22, 24, 25, 25, 22, 28, 40, 45, 35, 28, 20, 15, 10, 6],
-            
-            # 1. Commuter Heavy
             [3, 2, 1, 1, 3, 10, 30, 55, 60, 40, 20, 15, 18, 15, 15, 20, 30, 35, 30, 25, 15, 10, 5, 3],
-            
-            # 2. Nightlife / Saturday
             [15, 10, 5, 2, 1, 2, 10, 20, 25, 25, 25, 25, 30, 30, 30, 35, 45, 50, 60, 55, 45, 35, 25, 20],
-            
-            # 3. Lazy Sunday
             [10, 8, 5, 2, 1, 1, 2, 5, 10, 15, 25, 35, 40, 45, 45, 40, 35, 30, 25, 20, 15, 10, 8, 5],
-            
-            # 4. Low Demand
             [2, 1, 1, 1, 1, 3, 10, 25, 30, 20, 15, 15, 18, 18, 15, 18, 25, 30, 25, 20, 15, 10, 5, 3],
-            
-            # 5. High Stress
             [5, 3, 2, 2, 5, 15, 25, 45, 60, 45, 35, 35, 35, 35, 35, 45, 60, 65, 55, 45, 30, 20, 15, 10],
-            
-            # 6. Flattened Curve
             [10, 8, 5, 5, 8, 15, 25, 28, 30, 28, 25, 25, 25, 25, 25, 28, 30, 28, 25, 25, 20, 15, 12, 10],
-            
-            # 7. Bimodal Extreme
             [2, 1, 1, 1, 5, 15, 30, 65, 70, 35, 15, 10, 10, 10, 10, 15, 35, 70, 65, 30, 15, 10, 5, 2],
-            
-            # 8. Late Night Event
             [4, 2, 1, 1, 2, 5, 15, 30, 40, 25, 20, 20, 25, 25, 22, 25, 30, 35, 30, 25, 20, 15, 65, 40],
-            
-            # 9. Early Afternoon Spike
             [4, 2, 1, 1, 2, 5, 15, 35, 45, 30, 22, 24, 25, 50, 65, 35, 30, 35, 30, 25, 20, 15, 10, 5]
         ]
         
-        # Καθορισμός Πιθανοτήτων: 28% για το Normal Day, 8% για τα υπόλοιπα 9
         probabilities = [0.28] + [0.08] * 9
-        
-        # Επιλογή με βάση τις καθορισμένες πιθανότητες
         chosen_index = np.random.choice(len(self.all_profiles), p=probabilities)
         self.current_profile = self.all_profiles[chosen_index]
 
     def _get_random_point(self, region='center'):
-        """Δίνει ένα τυχαίο (X, Y) στο κέντρο ή στα περίχωρα, ΚΟΥΜΠΩΜΕΝΟ ΣΤΟ ΠΛΕΓΜΑ"""
         while True:
-            # Επαναφορά σε np.random.uniform
             x = self.city._snap_to_grid(np.random.uniform(0.0, self.city.width_km))
             y = self.city._snap_to_grid(np.random.uniform(0.0, self.city.height_km))
             
@@ -69,12 +45,8 @@ class ClientManager:
                 return (x, y)
 
     def generate_new_demands(self, current_time_mins):
-        """Δημιουργεί νέους πελάτες βάσει της επιλεγμένης καμπύλης ζήτησης"""
         hour = (current_time_mins // 60) % 24
-
         mean_demand = self.current_profile[hour]
-        
-        # Επαναφορά σε np.random.poisson
         demand_count = np.random.poisson(mean_demand)
 
         if 6 <= hour <= 11:
@@ -87,7 +59,6 @@ class ClientManager:
         trip_types = ['CC', 'CP', 'PC', 'PP']
 
         for _ in range(demand_count):
-            # Επαναφορά σε np.random.choice
             trip_type = np.random.choice(trip_types, p=trip_probs)
             dist_km = 0.0
             attempts = 0
@@ -121,13 +92,13 @@ class ClientManager:
             self.waitlist.append(customer)
 
     def process_waitlist(self, current_time_mins, fleet):
-        """Ταιριάζει πελάτες με τον στόλο επιλέγοντας το κοντινότερο ταξί (Spatial Matching)"""
         avg_speed_kmh = 35.0
         speed_km_min = avg_speed_kmh / 60.0
         
         available_taxis = [t for t in fleet if t.state in ['IDLE', 'REBALANCING'] and t.current_soc > 0.0]
         
-        ratings_this_minute = []
+        # ΑΛΛΑΓΗ 1: Μετονομασία της λίστας σε wait_times
+        wait_times_this_minute = []
         abandoned_count = 0
 
         while self.waitlist and available_taxis:
@@ -152,13 +123,8 @@ class ClientManager:
                 dispatch_wait_time = current_time_mins - customer['spawn_time']
                 total_wait_time = dispatch_wait_time + pickup_duration_mins
                 
-                if total_wait_time <= 6: stars = 5
-                elif total_wait_time <= 10: stars = 4
-                elif total_wait_time <= 15: stars = 3
-                elif total_wait_time <= 20: stars = 2
-                else: stars = 1 
-                    
-                ratings_this_minute.append(stars)
+                # ΑΛΛΑΓΗ 2: Κρατάμε απευθείας τον χρόνο αναμονής, τέρμα τα αστέρια
+                wait_times_this_minute.append(total_wait_time)
                 
                 fare_eur = max(4.00, 1.80 + (customer['distance_km'] * 0.90))
                 
@@ -177,4 +143,5 @@ class ClientManager:
         self.waitlist = [c for c in self.waitlist if (current_time_mins - c['spawn_time']) <= 20]
         abandoned_count = original_count - len(self.waitlist)
         
-        return ratings_this_minute, abandoned_count
+        # ΑΛΛΑΓΗ 3: Επιστρέφει τη νέα λίστα
+        return wait_times_this_minute, abandoned_count

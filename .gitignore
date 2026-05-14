@@ -4,4 +4,4 @@ __pycache__/
 history_*.csv
 test/
 tensorboard_logs/
-ppo_fleet_*.zip
+ppo_model.zip

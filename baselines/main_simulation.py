@@ -1,157 +1,126 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
+import random
 import csv
+import matplotlib.pyplot as plt
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from environments.citygrid import CityMap  
 from environments.traffic_generator import TrafficGenerator
 from baselines.benchmark import GreedyHeuristicBaseline
-import random
 
-def run_headless_simulation():
+def run_simulation_for_profile(profile_idx):
+    """Εκτελεί το simulation του Baseline για ένα συγκεκριμένο προφίλ."""
     NUM_VEHICLES = 750
-
-    print("--- 1. INITIALIZING CONTINUOUS SPACE MAP & FLEET ---")
+    
     np.random.seed(50) 
     random.seed(50)
     
-    # Αρχικοποίηση χάρτη στον συνεχή χώρο (20x20 km) με 16 σταθμούς
     city = CityMap(width_km=20.0, height_km=20.0, num_stations=16, num_hubs=4)
+    generator = TrafficGenerator(city, num_vehicles=NUM_VEHICLES, seed=50)
+    generator.client_manager.current_profile = generator.client_manager.all_profiles[profile_idx]
     
-    # Αρχικοποίηση στόλου
-    generator = TrafficGenerator(city, num_vehicles=NUM_VEHICLES)
     fleet = generator.generate_initial_fleet()
-    
-    # Αρχικοποίηση Baseline (Διευθυντής Στόλου)
     baseline_solver = GreedyHeuristicBaseline(city)
     
-    successful_charges = 0
-    total_energy_kwh = 0.0
-    
-    # Μεταβλητές Ποιότητας (QoS) & Νεκρών Ταξί
-    total_stars = 0
+    total_wait_time = 0.0
     total_customers_served = 0
     total_abandoned_customers = 0
-    dead_taxis_set = set()  
-    
-    print("\n--- 2. STARTING 48-HOUR SIMULATION LOOP (WITH REBALANCING) ---")
-    # Το διορθώσαμε σε 2880 για να τρέχει όντως 2 μέρες
+    total_energy_kwh = 0.0
+    LEASING_COST_EUR = 40.0
+
+    # --- ΝΕΟ: Λίστες για τα γραφήματα Time-Series ---
+    queues_over_time = []
+    avg_soc_over_time = []
+
+    # Simulation Loop (1 ημέρα = 1440 λεπτά)
     for minute in range(1440): 
-        
-        # 1. ΠΑΡΑΓΩΓΗ ΖΗΤΗΣΗΣ & ΟΥΡΑ ΠΕΛΑΤΩΝ
         generator.generate_new_demands(minute)
         
-        # Αφαιρέθηκε ο χρόνος αναμονής, γυρίσαμε στο κλασικό
-        ratings, abandoned = generator.process_waitlist(minute)
+        wait_times, abandoned = generator.process_waitlist(minute, fleet)
         
-        # Αποθήκευση στατιστικών πελατών
-        total_stars += sum(ratings)
-        total_customers_served += len(ratings)
+        total_wait_time += sum(wait_times)
+        total_customers_served += len(wait_times)
         total_abandoned_customers += abandoned
         
-        # 2. ΕΝΗΜΕΡΩΣΗ ΣΤΟΛΟΥ
         for ev in fleet:
             ev.update_time(minute)
             
-            # --- LIVE ΕΙΔΟΠΟΙΗΣΗ ΓΙΑ ΝΕΚΡΑ ΤΑΞΙ ---
-            if ev.state == 'STRANDED' and ev.id not in dead_taxis_set:
-                print(f" [Ώρα {minute//60:02d}:{minute%60:02d}] SOS: Το Ταξί {ev.id} έμεινε από μπαταρία στους δρόμους!")
-                dead_taxis_set.add(ev.id)
-            
-            # --- Αν το ταξί είναι ελεύθερο (IDLE) ---
             if ev.state == 'IDLE':
-                # Ο Αλγόριθμος παίρνει πλέον ΟΛΕΣ τις αποφάσεις (Φόρτιση ή Rebalance)
                 action, target_pos, dist, duration = baseline_solver.route_ev(ev)
-                
                 if action is not None:
                     if action == "REBALANCE":
-                        # Το ταξί πάει στο κέντρο
                         ev.state = 'REBALANCING'
                         ev.target_pos = target_pos
                         ev.arrival_time = minute + duration
                     else:
-                        # Το action είναι Αριθμός (Station ID), άρα πάει για φόρτιση
                         ev.dispatch_to_station(target_pos, action, dist, duration, minute)
                         city.add_to_queue(action)
-                        
-            # --- Αν το ταξί κάνει Αναδιάταξη (Επιστρέφει κέντρο) ---
+            
             elif ev.state == 'REBALANCING':
                 if minute >= getattr(ev, 'arrival_time', minute):
                     ev.location = ev.target_pos
                     ev.state = 'IDLE'
-                    
-            # Αν έφτασε στον σταθμό και περιμένει
+            
             elif ev.state == 'WAITING_FOR_CHARGER':
                 ev.total_waiting_time += 1
-                
-                # Προσπαθεί να πάρει πρίζα
                 charger_assigned = city.occupy_charger(ev.target_station_idx)
                 if charger_assigned:
                     city.remove_from_queue(ev.target_station_idx)
                     ev.state = 'CHARGING'
                     ev.charger_type = charger_assigned
-                    
-            # Αν φορτίζει
+            
             elif ev.state == 'CHARGING':
                 power = city.charger_specs[ev.charger_type]['power']
                 price = city.get_electricity_price(minute, ev.charger_type)
-                
                 station_to_release = ev.target_station_idx
-                
-                # Φόρτιση για 1 λεπτό
                 added_kwh = ev.charge(power_kw=power, price_per_kwh=price)
                 total_energy_kwh += added_kwh
-                
-                # Αν γέμισε, το ev.charge() αλλάζει το state σε 'IDLE'
                 if ev.state == 'IDLE':
                     city.release_charger(station_to_release, ev.charger_type)
-                    successful_charges += 1
-                    
-        # --- Εκτύπωση Status ανά Ώρα ---
-        if minute % 60 == 0:
-            with_cust = sum(1 for e in fleet if e.state == 'WITH_CUSTOMER')
-            idle = sum(1 for e in fleet if e.state == 'IDLE')
-            charging = sum(1 for e in fleet if e.state == 'CHARGING')
-            waiting = sum(1 for e in fleet if e.state == 'WAITING_FOR_CHARGER')
-            rebalancing = sum(1 for e in fleet if e.state == 'REBALANCING')
-            
-            avg_stars = (total_stars / total_customers_served) if total_customers_served > 0 else 5.0
-            
-            print(f"[Ώρα {minute//60:02d}:00] Ταξί(Ελεύθ:{idle:3d}|Πελάτης:{with_cust:3d}|Επιστρέφουν:{rebalancing:3d}|Φορτίζουν:{charging:2d}|ΟυράΠρίζας:{waiting:2d}) | Αναμονή: {len(generator.waitlist):3d} | Αστέρια: {avg_stars:.1f} | Νεκρά: {len(dead_taxis_set)}")
 
-    # --- 3. ΑΠΟΘΗΚΕΥΣΗ ΙΣΤΟΡΙΚΟΥ ---
-    print("\n--- 3. SAVING HISTORY LOG ---")
-    LEASING_COST_EUR = 40.0 
-    
-    with open('history_baseline_with_rebalance.csv', mode='w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(['EV_ID', 'Status', 'Distance_km', 'Gross_Profit_Eur', 'Charging_Cost_Eur', 'Net_Profit_Eur', 'Times_Charged', 'Wait_Time_mins', 'Final_SoC', 'Customers_Served'])
+        # --- ΝΕΟ: Καταγραφή δεδομένων ΛΕΠΤΟ-ΠΡΟΣ-ΛΕΠΤΟ ---
+        # Υπολογίζουμε το άθροισμα των ουρών σε όλους τους σταθμούς αυτή τη στιγμή
+        current_total_queue = sum(st['queue_length'] for st in city.stations)
+        # Υπολογίζουμε τη μέση μπαταρία όλου του στόλου αυτή τη στιγμή
+        current_avg_soc = sum(ev.current_soc for ev in fleet) / len(fleet)
         
-        for ev in fleet:
-            net_profit = ev.daily_revenue - ev.daily_charging_cost - LEASING_COST_EUR
-            
-            writer.writerow([
-                ev.id, ev.state, f"{ev.total_km_driven:.2f}", f"{ev.daily_revenue:.2f}", 
-                f"{ev.daily_charging_cost:.2f}", f"{net_profit:.2f}", ev.times_charged, 
-                ev.total_waiting_time, f"{ev.current_soc:.2f}", ev.customers_served
-            ])
+        queues_over_time.append(current_total_queue)
+        avg_soc_over_time.append(current_avg_soc)
 
-    # --- 4. ΤΕΛΙΚΑ ΑΠΟΤΕΛΕΣΜΑΤΑ ---
+    # Τελικοί υπολογισμοί για το προφίλ
     total_net_profit = sum(e.daily_revenue - e.daily_charging_cost - LEASING_COST_EUR for e in fleet)
-    final_avg_stars = (total_stars / total_customers_served) if total_customers_served > 0 else 0
+    total_requested = total_customers_served + total_abandoned_customers
+    service_rate = (total_customers_served / total_requested * 100) if total_requested > 0 else 0
+    avg_wait_time = (total_wait_time / total_customers_served) if total_customers_served > 0 else 0.0
+
+    return {
+        "profit": total_net_profit,
+        "service_rate": service_rate,
+        "wait_time": avg_wait_time,
+        "queues_over_time": queues_over_time,   # --- ΝΕΟ: Επιστρέφουμε τη λίστα
+        "avg_soc_over_time": avg_soc_over_time  # --- ΝΕΟ: Επιστρέφουμε τη λίστα
+    }
     
-    print("\n" + "="*60)
-    print("--- SIMULATION COMPLETE (WITH REBALANCING) ---")
-    print(f"Συνολικός Στόλος: {NUM_VEHICLES} Οχήματα")
-    print(f"Ολοκληρωμένες Φορτίσεις: {successful_charges}")
-    print(f"Συνολική Ενέργεια Δικτύου: {total_energy_kwh:.2f} kWh")
-    print(f"ΣΥΝΟΛΙΚΟ ΚΑΘΑΡΟ ΚΕΡΔΟΣ ΕΤΑΙΡΕΙΑΣ: {total_net_profit:.2f} €")
-    print("-" * 60)
-    print(f"Εξυπηρετήθηκαν: {total_customers_served} Πελάτες")
-    print(f"Εγκατέλειψαν (Χαμένα Έσοδα): {total_abandoned_customers} Πελάτες")
-    print(f"Μέση Βαθμολογία Στόλου (Αστέρια): {final_avg_stars:.2f} / 5.00")
-    print(f"Οχήματα που έμειναν από μπαταρία: {len(dead_taxis_set)}")
-    print("="*60)
+    
+def main():
+    profile_names = [
+        "Normal", "Commuter", "Saturday", "Sunday", "Low", 
+        "High Stress", "Flattened", "Bimodal", "Event", "Early Spike"
+    ]
+    
+    all_baseline_results = []
+
+    # ΑΛΛΑΓΗ: Ανανεωμένα Headers στην εκτύπωση
+    print(f"{'Profile':<15} | {'Profit (€)':<12} | {'Service %':<10} | {'Wait(m)':<7}")
+    print("-" * 55)
+
+    for i in range(10):
+        res = run_simulation_for_profile(i)
+        all_baseline_results.append(res)
+        # ΑΛΛΑΓΗ: Εκτύπωση του wait_time
+        print(f"{profile_names[i]:<15} | {res['profit']:>10.2f}€ | {res['service_rate']:>8.1f}% | {res['wait_time']:>6.1f}m")
 
 if __name__ == "__main__":
-    run_headless_simulation()
+    main()

@@ -46,7 +46,7 @@ def main():
     )
 
     print("--- 4. Αποθήκευση Νέου Μοντέλου ---")
-    model.save("ppo_fleet_model_v7") 
+    model.save("ppo_fleet_model") 
     print("Το AI εκπαιδεύτηκε για ακόμα 500.000 βήματα και αποθηκεύτηκε ως v5!")
 
 if __name__ == "__main__":
