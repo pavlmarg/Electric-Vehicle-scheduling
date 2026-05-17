@@ -1689,7 +1689,8 @@ export default function App() {
           flexDirection: "column",
           padding: "16px", 
           gap: 12, 
-          overflow: "hidden", 
+          overflowY: "auto", 
+          overflowX: "hidden",
           minWidth: 0 
         }}>
 
@@ -1759,7 +1760,7 @@ export default function App() {
           </div>
 
           {/* Map */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 8, minHeight: 700 }}>
 
             {/* Map toolbar */}
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
@@ -1795,7 +1796,8 @@ export default function App() {
 
             {/* Canvas wrapper */}
             <div style={{ 
-              flex: 1, 
+              flex: 1,
+              minHeight: 600,
               position: "relative", 
               borderRadius: "var(--radius-lg)", 
               overflow: "hidden",
@@ -1806,6 +1808,101 @@ export default function App() {
               alignItems: "center", 
               justifyContent: "center" 
             }}>
+              {/* Decorative corner elements */}
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+                {/* Top-left taxi icon */}
+                <div style={{ 
+                  position: "absolute", 
+                  top: 16, 
+                  left: 16, 
+                  opacity: 0.04,
+                  transform: "rotate(-15deg)"
+                }}>
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                    <path d="M5 11h14v7H5z" fill="currentColor" stroke="none"/>
+                    <rect x="3" y="11" width="18" height="7" rx="2"/>
+                    <path d="M6 11V7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4"/>
+                    <circle cx="7" cy="18" r="1.5" fill="currentColor"/>
+                    <circle cx="17" cy="18" r="1.5" fill="currentColor"/>
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    <rect x="9" y="2" width="6" height="2" rx="0.5" fill="var(--amber)" opacity="0.6"/>
+                  </svg>
+                </div>
+                {/* Top-right lightning bolt */}
+                <div style={{ 
+                  position: "absolute", 
+                  top: 20, 
+                  right: 20, 
+                  opacity: 0.04,
+                  transform: "rotate(10deg)"
+                }}>
+                  <svg width="70" height="70" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                  </svg>
+                </div>
+                {/* Bottom-left charging station */}
+                <div style={{ 
+                  position: "absolute", 
+                  bottom: 50, 
+                  left: 20, 
+                  opacity: 0.04,
+                  transform: "rotate(-5deg)"
+                }}>
+                  <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="4" y="4" width="10" height="16" rx="2"/>
+                    <path d="M14 9h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h0"/>
+                    <path d="M20 17v2"/>
+                    <path d="M7 12h4"/>
+                    <path d="M9 10v4"/>
+                  </svg>
+                </div>
+                {/* Bottom-right battery */}
+                <div style={{ 
+                  position: "absolute", 
+                  bottom: 50, 
+                  right: 100, 
+                  opacity: 0.04,
+                  transform: "rotate(8deg)"
+                }}>
+                  <svg width="65" height="65" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="2" y="7" width="18" height="10" rx="2"/>
+                    <path d="M22 11v2"/>
+                    <path d="M6 10v4"/>
+                    <path d="M10 10v4"/>
+                    <path d="M14 10v4"/>
+                  </svg>
+                </div>
+                {/* Center-right car silhouette */}
+                <div style={{ 
+                  position: "absolute", 
+                  top: "50%", 
+                  right: 14, 
+                  opacity: 0.03,
+                  transform: "translateY(-50%) rotate(90deg)"
+                }}>
+                  <svg width="50" height="50" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zm10 0a2 2 0 1 0 4 0 2 2 0 0 0-4 0z"/>
+                    <path d="M3 12h18v5a1 1 0 0 1-1 1h-1a3 3 0 0 1-6 0H9a3 3 0 0 1-6 0H4a1 1 0 0 1-1-1v-5z"/>
+                    <path d="M5 12V9a1 1 0 0 1 1-1h2l2-3h4l2 3h2a1 1 0 0 1 1 1v3"/>
+                  </svg>
+                </div>
+                {/* Center-left speedometer */}
+                <div style={{ 
+                  position: "absolute", 
+                  top: "40%", 
+                  left: 14, 
+                  opacity: 0.03
+                }}>
+                  <svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v2"/>
+                    <path d="M12 16v2"/>
+                    <path d="M6 12h2"/>
+                    <path d="M16 12h2"/>
+                    <path d="M12 12l3-3"/>
+                  </svg>
+                </div>
+              </div>
               <canvas 
                 ref={canvasRef} 
                 width={canvasSize} 
