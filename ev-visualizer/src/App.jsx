@@ -1353,6 +1353,7 @@ export default function App() {
         alignItems: "center", 
         padding: "0 20px",
         borderBottom: "1px solid var(--border)", 
+        backgroundColor: "#1B1503",
         background: "var(--bg-elevated)",
         flexShrink: 0, 
         gap: 16, 
@@ -1367,7 +1368,7 @@ export default function App() {
             display: "flex", 
             alignItems: "center", 
             justifyContent: "center",
-            color: "#000",
+            color: "yellow",
             flexShrink: 0 
           }}>
             {Icons.zap}
@@ -1379,14 +1380,7 @@ export default function App() {
               letterSpacing: "-0.02em",
               color: "var(--text)"
             }}>
-              EV Fleet Simulator
-            </div>
-            <div style={{ 
-              fontSize: 11, 
-              color: "var(--text-muted)",
-              letterSpacing: "0.01em"
-            }}>
-              Electric Vehicle Scheduling Visualization
+              E-TAXI SIMULATOR
             </div>
           </div>
         </div>
