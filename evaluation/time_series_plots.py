@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 
-# Βοηθάει την Python να βρει τους φακέλους σου
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from baselines.main_simulation import run_simulation_for_profile
