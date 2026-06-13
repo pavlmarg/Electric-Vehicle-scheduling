@@ -30,7 +30,7 @@ def run_simulation_for_profile(profile_idx):
     total_energy_kwh = 0.0
     LEASING_COST_EUR = 40.0
 
-    # --- ΝΕΟ: Λίστες για τα γραφήματα Time-Series ---
+    #  Λίστες για τα γραφήματα Time-Series
     queues_over_time = []
     avg_soc_over_time = []
 
@@ -80,10 +80,8 @@ def run_simulation_for_profile(profile_idx):
                 if ev.state == 'IDLE':
                     city.release_charger(station_to_release, ev.charger_type)
 
-        # --- ΝΕΟ: Καταγραφή δεδομένων ΛΕΠΤΟ-ΠΡΟΣ-ΛΕΠΤΟ ---
-        # Υπολογίζουμε το άθροισμα των ουρών σε όλους τους σταθμούς αυτή τη στιγμή
+        # Καταγραφή δεδομένων ΛΕΠΤΟ-ΠΡΟΣ-ΛΕΠΤΟ
         current_total_queue = sum(st['queue_length'] for st in city.stations)
-        # Υπολογίζουμε τη μέση μπαταρία όλου του στόλου αυτή τη στιγμή
         current_avg_soc = sum(ev.current_soc for ev in fleet) / len(fleet)
         
         queues_over_time.append(current_total_queue)
@@ -99,8 +97,8 @@ def run_simulation_for_profile(profile_idx):
         "profit": total_net_profit,
         "service_rate": service_rate,
         "wait_time": avg_wait_time,
-        "queues_over_time": queues_over_time,   # --- ΝΕΟ: Επιστρέφουμε τη λίστα
-        "avg_soc_over_time": avg_soc_over_time  # --- ΝΕΟ: Επιστρέφουμε τη λίστα
+        "queues_over_time": queues_over_time,   
+        "avg_soc_over_time": avg_soc_over_time  
     }
     
     
@@ -112,7 +110,6 @@ def main():
     
     all_baseline_results = []
 
-    # ΑΛΛΑΓΗ: Ανανεωμένα Headers στην εκτύπωση
     print(f"{'Profile':<15} | {'Profit (€)':<12} | {'Service %':<10} | {'Wait(m)':<7}")
     print("-" * 55)
 

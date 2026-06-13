@@ -8,7 +8,7 @@ class TrafficGenerator:
         self.num_vehicles = num_vehicles
         self.fleet = []
         
-        # Ενεργοποιούμε τον διαχειριστή πελατών
+        
         self.client_manager = ClientManager(city_map)
 
     @property
@@ -21,7 +21,6 @@ class TrafficGenerator:
         self.fleet = []
         
         for i in range(self.num_vehicles):
-            # Χρησιμοποιούμε το _snap_to_grid και εδώ!
             x = self.city._snap_to_grid(np.random.uniform(0.0, self.city.width_km))
             y = self.city._snap_to_grid(np.random.uniform(0.0, self.city.height_km))
             

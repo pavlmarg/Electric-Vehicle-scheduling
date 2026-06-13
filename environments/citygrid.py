@@ -59,12 +59,11 @@ class CityMap:
         random.seed(None)
 
     def get_driving_distance_km(self, start_pos, station_id):
-        # ΑΣΤΡΑΠΙΑΙΑ MANHATTAN ΑΠΟΣΤΑΣΗ ΣΕ ΠΡΑΓΜΑΤΙΚΑ ΧΙΛΙΟΜΕΤΡΑ (Snaps to 50m)
+        # ΑΣΤΡΑΠΙΑΙΑ MANHATTAN ΑΠΟΣΤΑΣΗ ΣΕ ΠΡΑΓΜΑΤΙΚΑ ΧΙΛΙΟΜΕΤΡΑ
         try:
             target_pos = self.stations[station_id]['location']
             dist_x = abs(start_pos[0] - target_pos[0])
             dist_y = abs(start_pos[1] - target_pos[1])
-            # Στρογγυλοποίηση της τελικής απόστασης στο πλέγμα
             return self._snap_to_grid(dist_x + dist_y)
         except IndexError:
             return 15.0 

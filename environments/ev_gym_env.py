@@ -20,16 +20,16 @@ class EVFleetEnv(gym.Env):
         self.action_space = spaces.Discrete(18)
 
         # Observation space expanded: 48 features
-        # [0]    = sin(time)                        <- Cyclical time encoding
-        # [1]    = cos(time)                        <- Cyclical time encoding
+        # [0]    = sin(time)                      
+        # [1]    = cos(time)                        
         # [2]    = taxi SoC
         # [3]    = taxi x position
         # [4]    = taxi y position
         # [5-20] = distance to each of 16 stations
         # [21-36]= queue length at each of 16 stations
         # [37-45]= 3x3 demand heatmap
-        # [46]   = low_soc_ratio (stampede predictor) <- NEW
-        # [47]   = waitlist pressure                  <- NEW
+        # [46]   = low_soc_ratio (stampede predictor) 
+        # [47]   = waitlist pressure                  
         self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(48,), dtype=np.float32)
 
         self.total_wait_time = 0.0
@@ -109,17 +109,17 @@ class EVFleetEnv(gym.Env):
             taxi.target_pos = dest_pos
             taxi.arrival_time = self.current_minute + max(1, int(dist / 0.5))
 
-        # --- Advance Simulation ---
+        # Advance Simulation
         abandoned_this_step = 0
         if not self.taxis_needing_action:
             abandoned_this_step = self._advance_simulation_until_decision()
 
-        # --- Collect reward data ---
+        # Collect reward data 
         current_stranded = sum(1 for e in self.fleet if e.state == 'STRANDED')
         newly_stranded = current_stranded - self.previous_stranded_count
         newly_served = self.total_customers_served - self.previous_served
 
-        # --- Context variables ---
+        # Context variables 
         reward = 0.0
         current_hour = self.current_minute // 60
         waitlist_len = len(self.generator.waitlist)
@@ -156,9 +156,9 @@ class EVFleetEnv(gym.Env):
             # PEAK HOUR: Charging is almost always wrong unless critically low
             if is_peak and waitlist_len > 0:
                 if taxi.current_soc > 0.25:
-                    reward -= 30.0  # Strong deterrent: customers are waiting
+                    reward -= 30.0  
                 else:
-                    reward += 10.0  # Survival instinct override: had no choice
+                    reward += 10.0 
 
             # Reward proactive charging proportionally
             elif is_night and waitlist_len == 0:
@@ -168,7 +168,7 @@ class EVFleetEnv(gym.Env):
             # DAY / OFF-PEAK
             elif not is_peak and not is_night:
                 if taxi.current_soc > 0.60 and waitlist_len > 0:
-                    reward -= 10.0  # Battery is fine, go serve people
+                    reward -= 10.0
 
                 
                 if stampede_incoming and taxi.current_soc < 0.50 and queue_len < 5:
@@ -253,9 +253,7 @@ class EVFleetEnv(gym.Env):
         waitlist_pressure = min(len(self.generator.waitlist) / 500.0, 1.0)
         obs[47] = float(waitlist_pressure)
 
-        # Clip everything except the sin/cos time features
         obs[2:] = np.clip(obs[2:], 0.0, 1.0)
-        # Restore sentinel values if no taxi (clipping would have zeroed them)
         if not self.taxis_needing_action:
             obs[2] = -1.0
             obs[3] = -1.0
@@ -349,13 +347,12 @@ class EVFleetEnv(gym.Env):
                     if ev.state == 'IDLE':
                         self.city.release_charger(station_to_release, ev.charger_type)
 
-            # --- ΝΕΟ: Καταγραφή Δεδομένων Time-Series (Λεπτό προς Λεπτό) ---
+            #  Καταγραφή Δεδομένων Time-Series (Λεπτό προς Λεπτό) 
             current_total_queue = sum(st['queue_length'] for st in self.city.stations)
             current_avg_soc = sum(ev.current_soc for ev in self.fleet) / len(self.fleet)
             
             self.queues_over_time.append(current_total_queue)
             self.avg_soc_over_time.append(current_avg_soc)
-            # -------------------------------------------------------------
 
             self.current_minute += 1
 

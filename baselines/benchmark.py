@@ -6,7 +6,6 @@ class GreedyHeuristicBaseline:
         Ευρετικός αλγόριθμος διαχείρισης στόλου με Προληπτική Αναδιάταξη (Rebalancing).
         """
         self.city = city_map
-        # Το απόλυτο μαθηματικό κέντρο (χρησιμοποιείται μόνο για να δούμε αν το ταξί έχει απομακρυνθεί)
         self.center_pos = (self.city.width_km / 2.0, self.city.height_km / 2.0)
 
     def _get_random_center_pos(self):
@@ -18,7 +17,7 @@ class GreedyHeuristicBaseline:
         x = np.random.uniform(7.0, 13.0)
         y = np.random.uniform(7.0, 13.0)
         
-        # Αν η πόλη έχει τη λειτουργία πλέγματος (που την έχει), κουμπώνουμε το σημείο!
+        # κουμπώνουμε το σημείο
         if hasattr(self.city, '_snap_to_grid'):
             x = self.city._snap_to_grid(x)
             y = self.city._snap_to_grid(y)
@@ -30,14 +29,13 @@ class GreedyHeuristicBaseline:
         Αποφασίζει αν το ταξί πρέπει να Φορτίσει, να κάνει Rebalance στο κέντρο, ή να μείνει IDLE.
         Επιστρέφει (Action, Target_Pos, Απόσταση_km, Διάρκεια_mins)
         """
-        # 1. ΠΡΟΤΕΡΑΙΟΤΗΤΑ: ΕΠΙΒΙΩΣΗ (Φόρτιση)
+        # ΠΡΟΤΕΡΑΙΟΤΗΤΑ: ΕΠΙΒΙΩΣΗ (Φόρτιση)
         if ev.current_soc <= 0.25:
             return self._find_best_station(ev)
             
-        # 2. ΣΤΡΑΤΗΓΙΚΗ: REBALANCING ΣΕ ΖΩΝΗ ΚΕΝΤΡΟΥ
+        # ΣΤΡΑΤΗΓΙΚΗ: REBALANCING ΣΕ ΖΩΝΗ ΚΕΝΤΡΟΥ
         dist_from_absolute_center = self.city.calculate_manhattan_dist(ev.location, self.center_pos)
         
-        # Αν είναι μακριά από το κέντρο (> 5km) και έχει ρεύμα, γυρνάει πίσω!
         if dist_from_absolute_center > 5.0 and ev.current_soc > 0.40:
             
             # Βρίσκει έναν τυχαίο κόμβο-στόχο μέσα στο κέντρο για να παρκάρει
@@ -47,7 +45,6 @@ class GreedyHeuristicBaseline:
             actual_dist = self.city.calculate_manhattan_dist(ev.location, target_rebalance_pos)
             duration_mins = int(actual_dist / 0.5) + 1 
             
-            # Επιστρέφουμε τη λέξη "REBALANCE" αντί για ID σταθμού
             return "REBALANCE", target_rebalance_pos, actual_dist, duration_mins
             
         # 3. ΠΑΡΑΜΕΝΕΙ ΣΤΗ ΘΕΣΗ ΤΟΥ (IDLE)
