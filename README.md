@@ -49,7 +49,8 @@ Electric-Vehicle-scheduling/
 │   │   └── index.css          # Base reset styles
 │   ├── index.html
 │   ├── package.json
-│   └── vite.config.js
+│   ├── vite.config.js
+│   └── bot-chat/              # Chat log with the v0 bot used to scaffold the frontend (full transparency)
 │
 ├── ppo_model.zip              # Trained PPO model (git-ignored)
 ├── requirements.txt           # Python dependencies
@@ -309,6 +310,6 @@ This project was created as an academic thesis submission. All code is available
 
 ---
 
-## Author
+## PAVLOS MARGARITIS
 
 Developed by Pavlos Margaritis at the **Aristotle University of Thessaloniki** as a final-year bachelor's thesis on reinforcement learning applied to smart EV fleet management.
