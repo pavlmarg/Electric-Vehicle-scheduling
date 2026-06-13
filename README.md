@@ -15,7 +15,7 @@ This project simulates a city of **750 electric taxis** operating on a **20×20 
 
 Performance is evaluated across **10 distinct demand profiles** (Normal, Commuter, Saturday, Sunday, Low, High Stress, Flattened, Bimodal, Event, Early Spike) and compared on three KPIs: **net profit**, **service rate**, and **average customer wait time**.
 
-An interactive **web-based visualizer** lets you replay any simulation, watch taxis move in real-time on a canvas map, and inspect live metrics including fleet SoC, charging queues, and hourly demand patterns.
+An interactive **web-based visualizer** created in assistance with the v0 bot lets you replay any simulation, watch taxis move in real-time on a canvas map, and inspect live metrics including fleet SoC, charging queues, and hourly demand patterns.
 
 ---
 
@@ -310,6 +310,6 @@ This project was created as an academic thesis submission. All code is available
 
 ---
 
-## PAVLOS MARGARITIS
+## Author
 
 Developed by Pavlos Margaritis at the **Aristotle University of Thessaloniki** as a final-year bachelor's thesis on reinforcement learning applied to smart EV fleet management.
