@@ -2,7 +2,6 @@ class EVTaxi:
     def __init__(self, taxi_id, start_pos):
         self.id = taxi_id
         
-        # Η τοποθεσία πλέον είναι ένα tuple (x, y), π.χ. (12.45, 8.91)
         self.location = start_pos
         self.target_pos = None
         self.target_station_idx = None
@@ -22,7 +21,6 @@ class EVTaxi:
         self.times_charged = 0
         self.total_waiting_time = 0
         
-        # --- ΠΡΟΣΤΕΘΗΚΕ: Μετρητής πελατών ---
         self.customers_served = 0 
 
     def start_customer_trip(self, destination_pos, distance_km, duration_mins, fare_eur, current_time):
@@ -37,7 +35,7 @@ class EVTaxi:
         self.total_km_driven += distance_km
         self._consume_energy(distance_km)
         
-        # --- ΠΡΟΣΤΕΘΗΚΕ: Αυξάνουμε τους πελάτες ---
+
         self.customers_served += 1
         return True
 
@@ -94,6 +92,5 @@ class EVTaxi:
             self.state = 'STRANDED'
 
     def __repr__(self):
-        # Format the location to look neat if printed, keeping 2 decimal places
         loc_str = f"({self.location[0]:.1f}, {self.location[1]:.1f})" if isinstance(self.location, tuple) else "None"
         return f"Taxi_{self.id} | Loc: {loc_str} | SoC: {self.current_soc:.0%} | State: {self.state} | Rev: {self.daily_revenue:.2f}€ | Cust: {self.customers_served}"

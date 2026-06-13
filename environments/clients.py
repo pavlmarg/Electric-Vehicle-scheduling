@@ -6,7 +6,6 @@ class ClientManager:
         self.city = city_map
         self.waitlist = []
         
-        # Αν περαστεί seed, το εφαρμόζουμε παγκόσμια 
         if seed is not None:
             random.seed(seed)
             np.random.seed(seed)
@@ -97,7 +96,6 @@ class ClientManager:
         
         available_taxis = [t for t in fleet if t.state in ['IDLE', 'REBALANCING'] and t.current_soc > 0.0]
         
-        # ΑΛΛΑΓΗ 1: Μετονομασία της λίστας σε wait_times
         wait_times_this_minute = []
         abandoned_count = 0
 
@@ -123,7 +121,6 @@ class ClientManager:
                 dispatch_wait_time = current_time_mins - customer['spawn_time']
                 total_wait_time = dispatch_wait_time + pickup_duration_mins
                 
-                # ΑΛΛΑΓΗ 2: Κρατάμε απευθείας τον χρόνο αναμονής, τέρμα τα αστέρια
                 wait_times_this_minute.append(total_wait_time)
                 
                 fare_eur = max(4.00, 1.80 + (customer['distance_km'] * 0.90))
@@ -143,5 +140,4 @@ class ClientManager:
         self.waitlist = [c for c in self.waitlist if (current_time_mins - c['spawn_time']) <= 20]
         abandoned_count = original_count - len(self.waitlist)
         
-        # ΑΛΛΑΓΗ 3: Επιστρέφει τη νέα λίστα
         return wait_times_this_minute, abandoned_count

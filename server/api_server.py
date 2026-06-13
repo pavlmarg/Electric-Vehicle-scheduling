@@ -103,8 +103,8 @@ def run_simulation(req: SimulationRequest):
     random.seed(req.seed)
 
     frames = []
-    queues_over_time = []   # total queue per minute (for charts)
-    avg_soc_over_time = []  # fleet avg SoC per minute (for charts)
+    queues_over_time = []   
+    avg_soc_over_time = []  
 
     # =========================================================
     # BASELINE
@@ -166,7 +166,6 @@ def run_simulation(req: SimulationRequest):
             queues_over_time.append(sum(st["queue_length"] for st in city.stations))
             avg_soc_over_time.append(sum(ev.current_soc for ev in fleet) / len(fleet))
 
-            # Frame snapshot (every FRAME_INTERVAL minutes)
             if minute % FRAME_INTERVAL == 0:
                 frames.append(_build_frame(fleet, city.stations))
 

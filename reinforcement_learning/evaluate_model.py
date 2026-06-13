@@ -13,7 +13,7 @@ def evaluate_single_profile(model, env, profile_idx):
     # 1. Κάνουμε reset το περιβάλλον με σταθερό seed
     obs, _ = env.reset(seed=50)
     
-    # 2. ΕΠΙΒΟΛΗ ΤΟΥ ΠΡΟΦΙΛ (Αμέσως μετά το reset)
+    # 2. ΕΠΙΒΟΛΗ ΤΟΥ ΠΡΟΦΙΛ
     env.generator.client_manager.current_profile = env.generator.client_manager.all_profiles[profile_idx]
     
     terminated = False
@@ -57,7 +57,6 @@ def evaluate_single_profile(model, env, profile_idx):
     total_requested = env.total_customers_served + env.total_abandoned
     service_rate = (env.total_customers_served / total_requested * 100) if total_requested > 0 else 0.0
     
-    # ΠΡΟΣΟΧΗ: Υποθέτουμε ότι έχεις αλλάξει το env.total_stars σε env.total_wait_time στο ev_gym_env.py!
     avg_wait_time = (env.total_wait_time / env.total_customers_served) if env.total_customers_served > 0 else 0.0
 
     return {
