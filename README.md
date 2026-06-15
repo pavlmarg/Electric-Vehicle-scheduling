@@ -314,6 +314,7 @@ This project was created as an academic thesis submission. All code is available
 
 Developed by Pavlos Margaritis at the **Aristotle University of Thessaloniki** as a final-year bachelor's thesis on reinforcement learning applied to smart EV fleet management.
 
+## Images of the simulation
 
 <img width="1918" height="870" alt="Screenshot 2026-06-10 110706" src="https://github.com/user-attachments/assets/45e14211-c09d-477a-a2eb-92129efce81e" />
 <img width="1918" height="910" alt="Screenshot 2026-06-10 112119" src="https://github.com/user-attachments/assets/76adf2f6-c679-46c6-a57b-5b7b47548f55" />
